@@ -87,7 +87,18 @@ func splitAlternatives(s string) []string {
 // findColumn returns the index of the first header that matches one of the
 // alternatives: exact match first, then "starts with", then any word of the
 // header starting with the alternative. Indexes in taken are skipped.
+//
+// An alternative written as "#3" means "the 3rd column", for spreadsheets
+// whose headers are missing or change from file to file.
 func findColumn(header []string, alternatives string, taken map[int]bool) int {
+	for _, a := range strings.Split(alternatives, "|") {
+		a = strings.TrimSpace(a)
+		if n, err := strconv.Atoi(strings.TrimPrefix(a, "#")); err == nil && strings.HasPrefix(a, "#") {
+			if n >= 1 && n <= len(header) && !taken[n-1] {
+				return n - 1
+			}
+		}
+	}
 	alts := splitAlternatives(alternatives)
 	norm := make([]string, len(header))
 	for i, h := range header {

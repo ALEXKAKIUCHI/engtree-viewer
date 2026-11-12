@@ -52,7 +52,7 @@ O EngTree Viewer só **lê** as pastas configuradas e nunca grava nelas; roda um
 
 ## Limitações
 
-- O Excel antigo `.xls` não é lido: salve como `.xlsx` ou `.csv`.
+- O Excel antigo `.xls` binário não é lido: salve como `.xlsx` ou `.csv`. (Exportações em texto que só têm a extensão `.xls` são lidas.)
 - Faces curvas do IGES aparecem facetadas; é um visualizador rápido, não um CAD.
 - A hierarquia vem do número do item (1.2.1). BOMs com coluna de "nível" ainda não são suportadas.
 

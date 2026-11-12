@@ -10,9 +10,11 @@ import (
 	"unicode/utf8"
 )
 
-// Spreadsheet formats EngTree can read. Old binary .xls is not supported:
+// Spreadsheet formats EngTree can read. A ".xls" file is accepted when it is
+// really text (tab-separated exports are often saved with that extension) or
+// an .xlsx with the wrong extension. The old binary Excel format is not read:
 // save it as .xlsx or .csv.
-var sheetExts = map[string]bool{".xlsx": true, ".csv": true, ".txt": true, ".tsv": true}
+var sheetExts = map[string]bool{".xlsx": true, ".xls": true, ".csv": true, ".txt": true, ".tsv": true}
 
 func isSheetFile(name string) bool {
 	return sheetExts[strings.ToLower(filepath.Ext(name))]
@@ -29,6 +31,9 @@ func readTable(path string) [][]string {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil
+	}
+	if bytes.HasPrefix(raw, []byte("PK\x03\x04")) {
+		return readXLSX(path) // an .xlsx saved with another extension
 	}
 	text := decodeText(raw)
 	if text == "" {

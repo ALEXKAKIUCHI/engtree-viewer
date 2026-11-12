@@ -58,6 +58,8 @@ The BOM header row is found automatically (title lines above it are fine). Colum
 | Description | `DESCRIPTION`, `DESCRIÇÃO` … |
 | Quantity | `QTY`, `QUANTITY`, `QTD` … |
 
+If your headers vary, a column can also be given by position: `#2` means the 2nd column.
+
 Columns you don't want to see can be listed under **Hide these columns**.
 
 ### Settings file and portable mode
@@ -88,7 +90,7 @@ EngTree Viewer:
 
 ## Limitations
 
-- Old binary Excel `.xls` is not read: save as `.xlsx` or `.csv`.
+- Old binary Excel `.xls` is not read: save as `.xlsx` or `.csv`. (Text exports that merely carry the `.xls` extension are read.)
 - IGES curved faces are drawn faceted from their outline; it is a quick viewer, not a CAD kernel.
 - Hierarchy comes from item numbers (1.2.1). BOMs with a separate "level" column are not supported yet.
 
