@@ -43,7 +43,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" \
-            --title "EngTree Viewer $GITHUB_REF_NAME" \
-            --notes-file notes.md \
-            EngTreeViewer.exe *.zip SHA256SUMS.txt
+          # The release may already exist, when the tag was created from the
+          # GitHub website: then only the files are missing.
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" \
+              EngTreeViewer.exe *.zip SHA256SUMS.txt --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              --title "EngTree Viewer $GITHUB_REF_NAME" \
+              --notes-file notes.md \
+              EngTreeViewer.exe *.zip SHA256SUMS.txt
+          fi
