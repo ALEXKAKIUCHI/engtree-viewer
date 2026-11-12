@@ -28,6 +28,7 @@ type DirEntryInfo struct {
 type dirCacheItem struct {
 	ts      time.Time
 	entries []DirEntryInfo
+	subdirs []DirEntryInfo
 }
 
 var (
@@ -42,52 +43,53 @@ func invalidateDirCache() {
 	dirCacheMu.Unlock()
 	fileIndexMu.Lock()
 	fileIndex = map[string]fileIndexItem{}
+	refIndexes = map[string]refIndexItem{}
 	fileIndexMu.Unlock()
 }
 
 func scanDirCached(folder string) []DirEntryInfo {
+	files, _ := scanFolder(folder)
+	return files
+}
+
+// scanFolder lists the files and the sub-folders of a folder (cached).
+func scanFolder(folder string) ([]DirEntryInfo, []DirEntryInfo) {
 	folder = strings.TrimSpace(folder)
 	if folder == "" {
-		return nil
+		return nil, nil
 	}
 	dirCacheMu.Lock()
 	if item, ok := dirCache[folder]; ok && time.Since(item.ts) < cacheTTL {
 		dirCacheMu.Unlock()
-		return item.entries
+		return item.entries, item.subdirs
 	}
 	dirCacheMu.Unlock()
 
 	// Listing a dead network share can block for a long time, so check first.
 	if !folderReachableCached(folder) {
-		return nil
+		return nil, nil
 	}
 	raw, err := os.ReadDir(folder)
 	if err != nil {
-		return nil
+		return nil, nil
 	}
-	var files []DirEntryInfo
+	var files, dirs []DirEntryInfo
 	for _, e := range raw {
+		item := DirEntryInfo{Name: e.Name(), NameLower: strings.ToLower(e.Name()), FullPath: filepath.Join(folder, e.Name())}
 		if e.IsDir() {
+			dirs = append(dirs, item)
 			continue
 		}
-		var mtime float64
-		var size int64
 		if info, err := e.Info(); err == nil {
-			mtime = float64(info.ModTime().Unix())
-			size = info.Size()
+			item.Mtime = float64(info.ModTime().Unix())
+			item.Size = info.Size()
 		}
-		files = append(files, DirEntryInfo{
-			Name:      e.Name(),
-			NameLower: strings.ToLower(e.Name()),
-			FullPath:  filepath.Join(folder, e.Name()),
-			Mtime:     mtime,
-			Size:      size,
-		})
+		files = append(files, item)
 	}
 	dirCacheMu.Lock()
-	dirCache[folder] = dirCacheItem{ts: time.Now(), entries: files}
+	dirCache[folder] = dirCacheItem{ts: time.Now(), entries: files, subdirs: dirs}
 	dirCacheMu.Unlock()
-	return files
+	return files, dirs
 }
 
 // ---- Matching files to part codes ----
@@ -142,8 +144,12 @@ func viewerFor(ext string) string {
 		return "iges"
 	case ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg":
 		return "image"
-	case ".txt", ".csv", ".nc", ".mpr", ".gcode", ".tap":
+	case ".txt", ".csv", ".nc", ".mpr", ".gcode", ".tap", ".cnc", ".ngc", ".iso", ".xml", ".log":
 		return "text"
+	case ".mp4", ".webm", ".ogv":
+		return "video"
+	case ".mp3", ".wav", ".m4a", ".ogg":
+		return "audio"
 	}
 	return "external"
 }
@@ -244,6 +250,8 @@ func codeSet(productCode string, tree []*TreeNode) map[string]bool {
 type TypeFiles struct {
 	Type  string      `json:"type"`
 	Files []FoundFile `json:"files"`
+	List  bool        `json:"list"` // show as a file list
+	Ref   bool        `json:"ref"`  // attachments, not a configured file type
 }
 
 func findAllFiles(cfg Config, code string, others map[string]bool) []TypeFiles {
@@ -253,7 +261,14 @@ func findAllFiles(cfg Config, code string, others map[string]bool) []TypeFiles {
 		if files == nil {
 			files = []FoundFile{}
 		}
-		out = append(out, TypeFiles{Type: ft.Name, Files: files})
+		out = append(out, TypeFiles{Type: ft.Name, Files: files, List: ft.List})
+	}
+	if cfg.RefFolder != "" {
+		refs := findRefs(cfg, code, others)
+		if refs == nil {
+			refs = []FoundFile{}
+		}
+		out = append(out, TypeFiles{Type: refTypeName, Files: refs, List: true, Ref: true})
 	}
 	return out
 }
@@ -268,7 +283,102 @@ func markAvailability(cfg Config, nodes []*TreeNode, others map[string]bool) {
 				n.Files = append(n.Files, ft.Name)
 			}
 		}
+		if hasRefs(cfg, n.Code, others) {
+			n.Files = append(n.Files, refTypeName)
+		}
 	})
+}
+
+// ---- Attachments ("reference files") ----
+
+// Name of the pseudo file type for attachments: shown as a paper clip.
+const refTypeName = "📎"
+
+type refEntry struct {
+	e    DirEntryInfo
+	dir  bool
+	stem string
+}
+
+type refIndexItem struct {
+	ts    time.Time
+	byKey map[string][]refEntry
+}
+
+var refIndexes = map[string]refIndexItem{} // guarded by fileIndexMu
+
+func refIndex(folder string) map[string][]refEntry {
+	fileIndexMu.Lock()
+	if it, ok := refIndexes[folder]; ok && time.Since(it.ts) < cacheTTL {
+		fileIndexMu.Unlock()
+		return it.byKey
+	}
+	fileIndexMu.Unlock()
+	files, dirs := scanFolder(folder)
+	byKey := map[string][]refEntry{}
+	add := func(e DirEntryInfo, dir bool) {
+		stem := e.NameLower
+		if !dir {
+			stem = strings.TrimSuffix(stem, filepath.Ext(stem))
+		}
+		stem = strings.TrimSpace(stem)
+		for _, k := range codeKeys(stem) {
+			byKey[k] = append(byKey[k], refEntry{e: e, dir: dir, stem: stem})
+		}
+	}
+	for _, d := range dirs {
+		add(d, true)
+	}
+	for _, f := range files {
+		add(f, false)
+	}
+	fileIndexMu.Lock()
+	refIndexes[folder] = refIndexItem{ts: time.Now(), byKey: byKey}
+	fileIndexMu.Unlock()
+	return byKey
+}
+
+func refMatches(cfg Config, code string, others map[string]bool) []refEntry {
+	code = strings.ToLower(strings.TrimSpace(code))
+	if code == "" || cfg.RefFolder == "" {
+		return nil
+	}
+	var out []refEntry
+	for _, r := range refIndex(cfg.RefFolder)[code] {
+		if r.stem != code && belongsToLongerCode(r.stem, code, others) {
+			continue
+		}
+		out = append(out, r)
+	}
+	return out
+}
+
+func hasRefs(cfg Config, code string, others map[string]bool) bool {
+	return len(refMatches(cfg, code, others)) > 0
+}
+
+// findRefs lists the attachments of a code: loose files named after it and
+// everything inside sub-folders named after it.
+func findRefs(cfg Config, code string, others map[string]bool) []FoundFile {
+	var out []FoundFile
+	add := func(e DirEntryInfo) {
+		if strings.HasPrefix(e.Name, "~$") || e.NameLower == "thumbs.db" || e.NameLower == "desktop.ini" {
+			return
+		}
+		ext := filepath.Ext(e.NameLower)
+		out = append(out, FoundFile{Path: e.FullPath, Name: e.Name, Ext: ext, Mtime: e.Mtime, Size: e.Size, Viewer: viewerFor(ext)})
+	}
+	for _, r := range refMatches(cfg, code, others) {
+		if !r.dir {
+			add(r.e)
+			continue
+		}
+		for _, f := range scanDirCached(r.e.FullPath) {
+			add(f)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name) })
+	return out
 }
 
 // ---- ZIP package ----
@@ -279,7 +389,7 @@ type ZipEntry struct {
 }
 
 // collectPackage picks the best file of one type for the product and every
-// distinct code in its BOM.
+// distinct code in its BOM (every file, for types shown as a list).
 func collectPackage(cfg Config, ft FileType, productCode string, tree []*TreeNode) []ZipEntry {
 	codes := []string{productCode}
 	seenCode := map[string]bool{strings.ToLower(productCode): true}
@@ -297,18 +407,22 @@ func collectPackage(cfg Config, ft FileType, productCode string, tree []*TreeNod
 	usedName := map[string]bool{}
 	for _, c := range codes {
 		files := findFiles(ft, c, others)
-		if len(files) == 0 || usedPath[files[0].Path] {
-			continue
+		if len(files) > 1 && !ft.List {
+			files = files[:1]
 		}
-		f := files[0]
-		usedPath[f.Path] = true
-		arc := f.Name
-		base := strings.TrimSuffix(arc, f.Ext)
-		for n := 1; usedName[strings.ToLower(arc)]; n++ {
-			arc = fmt.Sprintf("%s_%d%s", base, n, f.Ext)
+		for _, f := range files {
+			if usedPath[f.Path] {
+				continue
+			}
+			usedPath[f.Path] = true
+			arc := f.Name
+			base := strings.TrimSuffix(arc, f.Ext)
+			for n := 1; usedName[strings.ToLower(arc)]; n++ {
+				arc = fmt.Sprintf("%s_%d%s", base, n, f.Ext)
+			}
+			usedName[strings.ToLower(arc)] = true
+			out = append(out, ZipEntry{Path: f.Path, ArcName: arc})
 		}
-		usedName[strings.ToLower(arc)] = true
-		out = append(out, ZipEntry{Path: f.Path, ArcName: arc})
 	}
 	return out
 }

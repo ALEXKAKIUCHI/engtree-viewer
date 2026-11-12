@@ -38,12 +38,26 @@ var (
 	scanning    bool
 	scanPending bool   // a rescan was asked for while one was running
 	lastScan    string // result of the last scan
-
-	// Codes of each opened product, used to tell "ABC-100-01.pdf" (its own
-	// part) from a revision of "ABC-100". Key: product code in upper case.
-	codeSetMu sync.RWMutex
-	codeSets  = map[string]map[string]bool{}
+	scanPhase   string // "reading" or "indexing", while scanning
+	scanProg    string // e.g. "120/340" while indexing
+	dataRev     int    // bumped whenever the lists change, so the UI reloads
 )
+
+func setScan(phase, progress string) {
+	scanMu.Lock()
+	scanPhase, scanProg = phase, progress
+	scanMu.Unlock()
+}
+
+func publishProducts(list []Product) {
+	cp := append([]Product(nil), list...)
+	projMu.Lock()
+	products = cp
+	projMu.Unlock()
+	scanMu.Lock()
+	dataRev++
+	scanMu.Unlock()
+}
 
 // ---- Product list ----
 
@@ -84,11 +98,27 @@ func refreshProducts() {
 		case !folderReachable(cfg.BomFolder):
 			msg = "offline"
 		default:
+			setScan("reading", "")
 			invalidateDirCache()
 			list := scanProducts(cfg)
-			projMu.Lock()
-			products = list
-			projMu.Unlock()
+			// Keep what is already known about files until the index is redone.
+			projMu.RLock()
+			old := map[string]Product{}
+			for _, p := range products {
+				old[p.BomFile] = p
+			}
+			projMu.RUnlock()
+			for i := range list {
+				if o, ok := old[list[i].BomFile]; ok && o.Files != nil {
+					list[i].Files, list[i].Refs = o.Files, o.Refs
+				}
+			}
+			publishProducts(list) // the list is usable while the index is built
+			setScan("indexing", "")
+			buildPartsIndex(cfg, list, func(done, total int) {
+				setScan("indexing", fmt.Sprintf("%d/%d", done, total))
+			})
+			publishProducts(list)
 			if b, err := json.Marshal(list); err == nil {
 				_ = os.WriteFile(cachePath, b, 0644)
 			}
@@ -290,6 +320,7 @@ func main() {
 	loadConfig()
 	cachePath = filepath.Join(dataDir, "products_cache.json")
 	loadProductsCache()
+	loadPartsIndex()
 	refreshProducts()
 
 	mux := http.NewServeMux()
@@ -312,13 +343,16 @@ func main() {
 	mux.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
 		cfg := getConfig()
 		scanMu.Lock()
-		s, msg := scanning, lastScan
+		s, msg, phase, prog, rev := scanning, lastScan, scanPhase, scanProg, dataRev
 		scanMu.Unlock()
 		writeJSON(w, map[string]any{
 			"configured": cfg.isConfigured(),
 			"online":     cfg.isConfigured() && bomFolderOnline(),
 			"scanning":   s,
 			"message":    msg,
+			"phase":      phase,
+			"progress":   prog,
+			"rev":        rev,
 		})
 	})
 
@@ -402,41 +436,36 @@ func main() {
 		writeJSON(w, getConfig().ColumnWidths)
 	})
 
+	// A product (whole BOM) or a part/assembly (the part and its sub-tree).
 	mux.HandleFunc("/api/product", func(w http.ResponseWriter, r *http.Request) {
-		p := findProduct(r.URL.Query().Get("code"))
-		if p == nil {
-			http.Error(w, "product not found", 404)
-			return
-		}
 		cfg := getConfig()
 		online := folderReachable(cfg.BomFolder)
-		res := BomResult{Columns: []string{}, Tree: []*TreeNode{}, Warnings: []string{}}
-		var productFiles []string
+		v := resolveItem(strings.TrimSpace(r.URL.Query().Get("code")), cfg, online)
+		if !v.Found {
+			http.Error(w, "not found", 404)
+			return
+		}
+		productFiles := []string{}
 		if online {
-			res = buildBom(*p, cfg)
-			others := codeSet(p.Code, res.Tree)
-			codeSetMu.Lock()
-			codeSets[strings.ToUpper(p.Code)] = others
-			codeSetMu.Unlock()
-			markAvailability(cfg, res.Tree, others)
-			root := &TreeNode{Code: p.Code}
+			addKnownCodes(codeSet(v.Product.Code, v.Bom.Tree))
+			others := getKnownCodes()
+			markAvailability(cfg, v.Bom.Tree, others)
+			root := &TreeNode{Code: v.Product.Code}
 			markAvailability(cfg, []*TreeNode{root}, others)
 			productFiles = root.Files
 		}
 		writeJSON(w, map[string]any{
-			"product":       p,
-			"bom":           res,
+			"product":       v.Product,
+			"bom":           v.Bom,
+			"root_values":   v.RootValues,
+			"part":          v.Part,
 			"product_files": productFiles,
 			"online":        online,
-			"file_types":    cfg.FileTypes,
 		})
 	})
 
 	mux.HandleFunc("/api/item_files", func(w http.ResponseWriter, r *http.Request) {
-		codeSetMu.RLock()
-		others := codeSets[strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("product")))]
-		codeSetMu.RUnlock()
-		writeJSON(w, findAllFiles(getConfig(), r.URL.Query().Get("code"), others))
+		writeJSON(w, findAllFiles(getConfig(), r.URL.Query().Get("code"), getKnownCodes()))
 	})
 
 	mux.HandleFunc("/api/file", func(w http.ResponseWriter, r *http.Request) {
@@ -498,11 +527,6 @@ func main() {
 
 	mux.HandleFunc("/api/package_zip", func(w http.ResponseWriter, r *http.Request) {
 		cfg := getConfig()
-		p := findProduct(r.URL.Query().Get("code"))
-		if p == nil {
-			http.Error(w, "product not found", 404)
-			return
-		}
 		var ft *FileType
 		for i := range cfg.FileTypes {
 			if strings.EqualFold(cfg.FileTypes[i].Name, r.URL.Query().Get("type")) {
@@ -517,7 +541,12 @@ func main() {
 			http.Error(w, "BOM folder not reachable", 503)
 			return
 		}
-		entries := collectPackage(cfg, *ft, p.Code, buildBom(*p, cfg).Tree)
+		v := resolveItem(strings.TrimSpace(r.URL.Query().Get("code")), cfg, true)
+		if !v.Found {
+			http.Error(w, "not found", 404)
+			return
+		}
+		entries := collectPackage(cfg, *ft, v.Product.Code, v.Bom.Tree)
 		if len(entries) == 0 {
 			http.Error(w, "no files", 404)
 			return
@@ -527,9 +556,11 @@ func main() {
 			return
 		}
 		w.Header().Set("Content-Type", "application/zip")
-		attachment(w, p.Code+"_"+ft.Name+".zip")
+		attachment(w, v.Product.Code+"_"+ft.Name+".zip")
 		writeZip(w, entries)
 	})
+
+	registerPartsRoutes(mux)
 
 	mux.HandleFunc("/api/open_url", func(w http.ResponseWriter, r *http.Request) {
 		// Only the project page (About / report a problem); nothing else.

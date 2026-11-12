@@ -20,7 +20,8 @@ ui/index.html                                   Go server
 | `sheets.go` | Reads .csv/.txt (delimiter and encoding detection) and dispatches .xlsx |
 | `xlsx.go` | Minimal .xlsx reader (first sheet) |
 | `bom.go` | Product discovery from file names, header matching, details join, tree building |
-| `files.go` | Directory cache, file-type index (exact / prefix keys), ZIP packages |
+| `files.go` | Directory cache, file-type index (exact / prefix keys), attachments, ZIP packages |
+| `parts.go` | Parts index built from all BOMs (per-BOM cache by modification time), Parts tab routes |
 | `cad.go` | DXF (2D) and IGES (3D curves and trimmed faces) parsing |
 | `taskbar_windows.go` | Own taskbar identity/icon for the browser window |
 | `ui/index.html` | The whole interface |
@@ -41,8 +42,9 @@ All UI text lives in the `I18N` table at the top of the script in `ui/index.html
 | `GET /api/products?q=&sort=code\|desc\|date&asc=` | product list |
 | `GET /api/refresh` | rescan the BOM folder |
 | `GET/POST /api/config`, `GET /api/default_config` | settings |
-| `GET /api/product?code=` | BOM tree with per-node file availability |
-| `GET /api/item_files?code=&product=` | files per type for one code |
+| `GET /api/product?code=` | BOM tree of a product, or a part with its sub-tree, with per-node file availability |
+| `GET /api/parts`, `GET /api/parts_facets`, `GET /api/item_zip?code=&type=` | Parts tab list and filters; ZIP of one code's files |
+| `GET /api/item_files?code=` | files per type for one code |
 | `GET /api/file?path=[&download=1]` | only inside configured folders |
 | `GET /api/cad_data?path=&kind=dxf\|iges` | geometry as JSON |
 | `GET /api/package_zip?code=&type=` | ZIP of one file type for the whole product |

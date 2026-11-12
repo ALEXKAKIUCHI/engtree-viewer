@@ -12,6 +12,9 @@ Feito para o chão de fábrica: um único `.exe` portátil, sem instalação, se
 - **Arquivos ligados a cada peça**: cada linha mostra quais tipos de arquivo existem para ela (PDF, DXF, IGES…)
 - **Visualizadores embutidos**: PDF, DXF (2D) e IGES (3D sombreado) com zoom, arrasto, rotação e **medição**; imagens e arquivos de texto/CNC também. O resto abre no programa padrão
 - **Revisões**: quando vários arquivos batem com a peça (`ABC-100.pdf`, `ABC-100_rev2.pdf`), escolha em uma lista; nome exato primeiro, depois o mais novo
+- **Aba Peças e Conjuntos**: todas as peças de todas as BOMs em uma lista pesquisável, com onde cada uma é usada, filtros por colunas da planilha e por tipo de arquivo; abrir um conjunto mostra a subárvore dele
+- **Lista de arquivos para programas de máquina**: marque um tipo de arquivo como *Lista* (ex.: CNC com `.mpr, .nc, .tap`…) para ver todos os arquivos da peça com data e tamanho e baixar um a um ou em ZIP
+- **Anexos** (📎): fotos, vídeos e documentos guardados em uma pasta ou arquivo com o nome do código
 - **Pacote ZIP**: todos os PDFs (ou DXFs…) de um produto em um clique
 - **Suas planilhas, suas colunas**: `.xlsx`, `.csv` (vírgula ou ponto e vírgula) ou `.txt` separado por tabulação. Só quatro colunas precisam ser encontradas (item, código, descrição, quantidade); as demais aparecem como estão
 - **Planilha de detalhes opcional**, ligada pelo código da peça (acabamento, cor, fornecedor…)

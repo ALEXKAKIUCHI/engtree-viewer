@@ -19,6 +19,10 @@ type FileType struct {
 	//           e.g. "ABC-100 - Side panel.pdf" or "ABC-100_rev2.pdf".
 	//           "ABC-1000.pdf" does NOT match "ABC-100".
 	Match string `json:"match"`
+	// List shows the files as a list (date, size, download, ZIP) instead of
+	// opening the first one: meant for machine programs (CNC and the like),
+	// where a part often has several files in formats each company defines.
+	List bool `json:"list"`
 }
 
 // Columns holds the header names used to find the key BOM columns. Each
@@ -52,6 +56,15 @@ type Config struct {
 	Columns       Columns    `json:"columns"`
 	HiddenColumns []string   `json:"hidden_columns"` // spreadsheet columns not shown in the tree
 	FileTypes     []FileType `json:"file_types"`
+
+	// Optional folder with attachments (photos, videos, customer documents).
+	// A sub-folder or a loose file belongs to a code when its name is the
+	// code or starts with it ("ABC-100 - customer photos").
+	RefFolder string `json:"ref_folder"`
+
+	// Spreadsheet columns shown (and filterable) in the Parts tab,
+	// e.g. ["Material", "Finish"].
+	PartsColumns []string `json:"parts_columns"`
 
 	// Column widths of the lists. Kept here (not in the browser) because the
 	// local address changes on every start.
@@ -168,6 +181,14 @@ func normalizeConfig(c *Config) {
 		types = append(types, ft)
 	}
 	c.FileTypes = types
+	var pc []string
+	for _, p := range c.PartsColumns {
+		if p = strings.TrimSpace(p); p != "" {
+			pc = append(pc, p)
+		}
+	}
+	c.PartsColumns = pc
+	c.RefFolder = strings.TrimSpace(c.RefFolder)
 }
 
 func saveConfigLocked() {
@@ -189,7 +210,7 @@ func (c Config) isConfigured() bool {
 
 // allowedRoots lists every folder the app may serve files from.
 func (c Config) allowedRoots() []string {
-	roots := []string{c.BomFolder}
+	roots := []string{c.BomFolder, c.RefFolder}
 	if c.DetailsFile != "" {
 		roots = append(roots, filepath.Dir(c.DetailsFile))
 	}

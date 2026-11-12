@@ -7,6 +7,7 @@
 <link rel="icon" type="image/png" href="/assets/icon_256.png">
 <style>
   * { box-sizing: border-box; font-family: 'Segoe UI', system-ui, sans-serif; font-size: 10pt; }
+  :root { color-scheme: dark; }
   html, body { margin: 0; height: 100%; background: #1e1e2e; color: #e0e0e0; overflow: hidden; display: flex; flex-direction: column; }
   button { background: #2a2a3e; border: 1px solid #3a3a4e; border-radius: 5px; padding: 5px 12px; color: #e0e0e0; cursor: pointer; }
   button:hover:not(:disabled) { background: #34344a; border-color: #4a9eff; }
@@ -32,11 +33,11 @@
   .pane { flex: 1; display: none; overflow: hidden; }
   .pane.active { display: flex; }
 
-  .search-pane { flex-direction: column; padding: 10px 14px; gap: 8px; width: 100%; }
+  .search-pane { display: flex; flex-direction: column; padding: 10px 14px; gap: 8px; width: 100%; height: 100%; min-height: 0; }
   .row { display: flex; gap: 8px; align-items: center; }
   .grow { flex: 1; }
   .muted { color: #9aa0b0; font-size: 9pt; }
-  .table-wrap { flex: 1; overflow: auto; border: 1px solid #3a3a4e; border-radius: 6px; background: #232336; }
+  .table-wrap { flex: 1; min-height: 0; overflow: auto; border: 1px solid #3a3a4e; border-radius: 6px; background: #232336; }
   table { width: 100%; border-collapse: collapse; }
   th { position: sticky; top: 0; background: #2a2a3e; padding: 7px 10px; text-align: left; border-bottom: 1px solid #3a3a4e; white-space: nowrap; z-index: 1; }
   th.sortable { cursor: pointer; }
@@ -48,7 +49,7 @@
   .empty { padding: 30px; color: #9aa0b0; line-height: 1.6; }
 
   .split { display: flex; width: 100%; height: 100%; }
-  .left { width: 46%; min-width: 360px; display: flex; flex-direction: column; padding: 8px; gap: 6px; }
+  .left { width: 46%; min-width: 360px; min-height: 0; display: flex; flex-direction: column; padding: 8px; gap: 6px; }
   .divider { width: 5px; cursor: col-resize; background: #3a3a4e; flex-shrink: 0; }
   .divider:hover { background: #4a9eff; }
   .right { flex: 1; display: flex; flex-direction: column; padding: 8px; gap: 6px; min-width: 0; }
@@ -56,6 +57,16 @@
   .badge { display: inline-block; font-size: 8pt; padding: 1px 5px; margin-right: 3px; border-radius: 3px; background: #1f3a5f; color: #bfdbfe; }
   tr.sel .badge { background: rgba(255,255,255,.25); color: #fff; }
   tr.root td { font-weight: 600; }
+  .pbadge { font-size: 8.5pt; padding: 1px 7px; margin-right: 4px; border-radius: 4px; background: #2f3550; border-color: #4a9eff; color: #cfe2ff; }
+  .pbadge:hover { background: #4a9eff !important; color: #fff; }
+  .pbadge.clip { background: #10b981; border-color: #059669; color: #fff; border-radius: 10px; }
+  tr.sel .pbadge { border-color: #fff; }
+  .chk { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+  .filelist { width: 100%; overflow: auto; }
+  .filelist td { white-space: nowrap; }
+  .filelist td.name { white-space: normal; word-break: break-word; width: 100%; }
+  .filelist button { padding: 2px 8px; margin-left: 3px; }
+  .stage video, .stage audio { max-width: 100%; max-height: 100%; margin: auto; }
   tr.dim td { opacity: .35; }
   .bar { display: flex; align-items: center; gap: 6px; background: #2a2a3e; padding: 5px 8px; border-radius: 5px; flex-wrap: wrap; }
   .bar .title { font-weight: 600; margin-right: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 40%; }
@@ -93,6 +104,7 @@
 
 <div class="tabbar" id="tabbar">
   <div class="tab active" id="tab-btn-home" onclick="activateTab('home')" data-i18n="products"></div>
+  <div class="tab" id="tab-btn-parts" onclick="activateTab('parts')" data-i18n="parts_tab"></div>
 </div>
 
 <div id="workspace">
@@ -107,11 +119,24 @@
             <th class="sortable" onclick="sortBy('code')" id="h-code"></th>
             <th class="sortable" onclick="sortBy('desc')" id="h-desc"></th>
             <th class="sortable" onclick="sortBy('date')" id="h-date"></th>
+            <th data-i18n="col_files"></th>
           </tr></thead>
           <tbody></tbody>
         </table>
       </div>
       <div class="muted" id="list-status"></div>
+    </div>
+  </div>
+  <div class="pane" id="pane-parts">
+    <div class="search-pane">
+      <div class="row" style="flex-wrap: wrap">
+        <input id="pq" class="grow" style="min-width: 240px" data-i18n-ph="parts_search_ph" oninput="debounce(loadParts, 250)()">
+        <span class="row" id="parts-filters" style="flex-wrap: wrap"></span>
+      </div>
+      <div class="table-wrap">
+        <table id="parts"><thead><tr id="parts-head"></tr></thead><tbody></tbody></table>
+      </div>
+      <div class="muted" id="parts-status"></div>
     </div>
   </div>
 </div>
@@ -136,6 +161,8 @@
       <div class="field"><label data-i18n="s_det_prefix"></label><input id="s-det-prefix" data-i18n-ph="s_det_prefix_ph">
         <div class="hint" data-i18n="s_det_prefix_hint"></div></div>
       <div class="field"><label data-i18n="s_det_file"></label><input id="s-det-file" data-i18n-ph="s_det_file_ph"></div>
+      <div class="field" style="grid-column: span 2"><label>📎 <span data-i18n="s_ref_folder"></span></label><input id="s-ref-folder">
+        <div class="hint" data-i18n="s_ref_hint"></div></div>
     </div>
     <h3 data-i18n="s_cols_h"></h3>
     <div class="muted" style="margin-bottom:6px" data-i18n="s_cols_hint"></div>
@@ -145,14 +172,16 @@
       <div class="field"><label data-i18n="s_c_desc"></label><input id="s-c-desc"></div>
       <div class="field"><label data-i18n="s_c_qty"></label><input id="s-c-qty"></div>
       <div class="field" style="grid-column: span 2"><label data-i18n="s_hidden"></label><input id="s-hidden" data-i18n-ph="s_hidden_ph"></div>
+      <div class="field" style="grid-column: span 2"><label data-i18n="s_parts_cols"></label><input id="s-parts-cols" data-i18n-ph="s_parts_cols_ph">
+        <div class="hint" data-i18n="s_parts_cols_hint"></div></div>
     </div>
     <h3 data-i18n="s_ft_h"></h3>
     <div class="muted" style="margin-bottom:6px" data-i18n="s_ft_hint"></div>
     <table class="ft-table">
-      <thead><tr><th style="width:14%" data-i18n="ft_name"></th><th style="width:16%" data-i18n="ft_ext"></th><th data-i18n="ft_folders"></th><th style="width:12%" data-i18n="ft_match"></th><th style="width:4%"></th></tr></thead>
+      <thead><tr><th style="width:14%" data-i18n="ft_name"></th><th style="width:16%" data-i18n="ft_ext"></th><th data-i18n="ft_folders"></th><th style="width:12%" data-i18n="ft_match"></th><th style="width:6%" data-i18n="ft_list" data-i18n-title="ft_list_hint"></th><th style="width:4%"></th></tr></thead>
       <tbody id="ft-body"></tbody>
     </table>
-    <button onclick="addFileTypeRow({name:'',extensions:[],folders:[],match:'exact'})" data-i18n="ft_add"></button>
+    <button onclick="addFileTypeRow({name:'',extensions:[],folders:[],match:'exact',list:false})" data-i18n="ft_add"></button>
     <div class="modal-actions">
       <button onclick="restoreDefaults()" style="margin-right:auto" data-i18n="restore"></button>
       <button onclick="closeModal('settings')" data-i18n="cancel"></button>
@@ -227,6 +256,18 @@ const I18N = {
     ft_name: 'Name', ft_ext: 'Extensions', ft_folders: 'Folders', ft_match: 'Match', ft_exact: 'Exact', ft_prefix: 'Prefix',
     ft_add: '+ Add file type', ft_remove: 'Remove',
     restore: 'Restore defaults', cancel: 'Cancel', save: 'Save', close: 'Close',
+    parts_tab: 'Parts and assemblies', parts_search_ph: 'Search parts by code, description or product…',
+    col_used: 'Used in', col_date2: 'Date', only_files: 'Only with files', has: 'Has:', all_values: '{0}: all',
+    n_parts: '{0} item(s) — double-click to open', n_parts_cut: '{0} item(s), showing the first {1} — refine the search',
+    parts_empty: 'No parts found.', indexing: 'Indexing parts… {0}',
+    zip_product: 'Download a ZIP with all {0} files of this product', attachments: 'Attachments',
+    view: 'View', back_list: '← List', n_files: '{0} file(s)', zip_item: 'ZIP ({0})', zip_item_title: 'All these files in one ZIP',
+    col_name: 'Name', col_size: 'Size',
+    s_ref_folder: 'Attachments folder (optional)',
+    s_ref_hint: 'Photos, videos and documents. A sub-folder or file belongs to a code when its name is the code or starts with it, e.g. "ABC-100 - customer photos".',
+    s_parts_cols: 'Columns in the Parts tab', s_parts_cols_ph: 'comma separated, e.g. Material, Finish',
+    s_parts_cols_hint: 'Spreadsheet columns shown, and usable as filters, in the Parts and assemblies tab.',
+    ft_list: 'List', ft_list_hint: 'Show the files as a list (date, size, ZIP) instead of opening the first one. Good for CNC programs.',
     ab_desc: "Browse BOMs as a tree and open each part's drawings, DXF and 3D files in one place.",
     ab_free: 'Free and open source (MIT). Created by Alexsander Kakiuchi.',
     ab_privacy_h: 'Privacy:', ab_privacy: 'EngTree only reads the folders you configure. It sends nothing over the internet and collects no data.',
@@ -282,6 +323,18 @@ const I18N = {
     ft_name: 'Nome', ft_ext: 'Extensões', ft_folders: 'Pastas', ft_match: 'Nome do arquivo', ft_exact: 'Exato', ft_prefix: 'Prefixo',
     ft_add: '+ Adicionar tipo de arquivo', ft_remove: 'Remover',
     restore: 'Restaurar padrões', cancel: 'Cancelar', save: 'Salvar', close: 'Fechar',
+    parts_tab: 'Peças e Conjuntos', parts_search_ph: 'Buscar peças por código, descrição ou produto…',
+    col_used: 'Usado em', col_date2: 'Data', only_files: 'Somente com arquivos', has: 'Tem:', all_values: '{0}: todos',
+    n_parts: '{0} item(ns) — duplo clique para abrir', n_parts_cut: '{0} item(ns), mostrando os primeiros {1} — refine a busca',
+    parts_empty: 'Nenhuma peça encontrada.', indexing: 'Indexando peças… {0}',
+    zip_product: 'Baixar um ZIP com todos os arquivos {0} deste produto', attachments: 'Anexos',
+    view: 'Ver', back_list: '← Lista', n_files: '{0} arquivo(s)', zip_item: 'ZIP ({0})', zip_item_title: 'Todos estes arquivos em um ZIP',
+    col_name: 'Nome', col_size: 'Tamanho',
+    s_ref_folder: 'Pasta de anexos (opcional)',
+    s_ref_hint: 'Fotos, vídeos e documentos. Uma subpasta ou arquivo pertence a um código quando o nome é o código ou começa com ele, ex.: "ABC-100 - fotos do cliente".',
+    s_parts_cols: 'Colunas da aba Peças', s_parts_cols_ph: 'separadas por vírgula, ex.: Material, Acabamento',
+    s_parts_cols_hint: 'Colunas da planilha mostradas, e usáveis como filtro, na aba Peças e Conjuntos.',
+    ft_list: 'Lista', ft_list_hint: 'Mostra os arquivos em lista (data, tamanho, ZIP) em vez de abrir o primeiro. Bom para programas CNC.',
     ab_desc: 'Navegue pelas BOMs em árvore e abra os desenhos, DXF e arquivos 3D de cada peça em um só lugar.',
     ab_free: 'Gratuito e de código aberto (MIT). Criado por Alexsander Kakiuchi.',
     ab_privacy_h: 'Privacidade:', ab_privacy: 'O EngTree só lê as pastas que você configurar. Não envia nada pela internet e não coleta dados.',
@@ -315,35 +368,50 @@ function fmtDate(s) { if (!s) return ''; const d = new Date(s * 1000); return d.
 function fmtSize(n) { return n > 1048576 ? (n/1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n/1024)) + ' KB'; }
 function fileUrl(p, dl) { return '/api/file?path=' + encodeURIComponent(p) + (dl ? '&download=1' : ''); }
 function closeModal(id) { document.getElementById(id).style.display = 'none'; }
-function setListStatus(text) { document.getElementById('list-status').innerText = text; }
 
-// ---------- status / list ----------
+// ---------- status / lists ----------
+let listCount = '', scanText = '';
+function showListStatus() {
+  const txt = [listCount, scanText].filter(Boolean).join(' · ');
+  document.getElementById('list-status').innerText = txt;
+  document.getElementById('parts-status').innerText = [partsCount, scanText].filter(Boolean).join(' · ');
+}
+
 async function pollStatus() {
   try {
     const s = await (await fetch('/api/status')).json();
     configured = s.configured;
     document.getElementById('offline').style.display = (s.configured && !s.online) ? 'block' : 'none';
+    scanText = !s.scanning ? '' : (s.phase === 'indexing' ? t('indexing', s.progress) : t('reading'));
     if (!s.configured) {
       if (!document.getElementById('welcome')) {
         showEmptyList(`<span id="welcome">${esc(t('welcome'))}</span><br><br><button class="primary" onclick="openSettings()">${esc(t('open_settings'))}</button>`);
-        setListStatus('');
+        listCount = '';
       }
-    } else {
-      if (s.scanning) setListStatus(t('reading'));
-      else if (pollStatus.wasScanning || (!lastOnline && s.online)) loadProducts();
+    } else if (s.rev !== pollStatus.rev || (!lastOnline && s.online)) {
+      pollStatus.rev = s.rev;
+      loadProducts();
+      if (partsState.loaded) { loadFacets(); loadParts(); }
     }
-    pollStatus.wasScanning = s.scanning;
     lastOnline = s.online;
+    showListStatus();
+    // Poll faster while a scan is running so the progress is visible.
+    if (s.scanning) { clearTimeout(pollStatus.fast); pollStatus.fast = setTimeout(pollStatus, 1000); }
   } catch (e) {}
 }
 
 function showEmptyList(html) {
-  document.querySelector('#products tbody').innerHTML = `<tr class="msg"><td colspan="3" class="empty" style="white-space:normal">${html}</td></tr>`;
+  document.querySelector('#products tbody').innerHTML = `<tr class="msg"><td colspan="4" class="empty" style="white-space:normal">${html}</td></tr>`;
 }
 
 function sortBy(col) {
   if (sortCol === col) sortAsc = !sortAsc; else { sortCol = col; sortAsc = true; }
   loadProducts();
+}
+
+function badgesHtml(files, refs) {
+  return (files || []).filter(x => x !== '📎').map(x => `<button class="pbadge" data-zip="${esc(x)}" title="${esc(t('zip_product', x))}">${esc(x)}</button>`).join('') +
+    (refs ? `<button class="pbadge clip" data-ref="1" title="${esc(t('attachments'))}">📎 ${refs === true ? '' : refs}</button>` : '');
 }
 
 async function loadProducts() {
@@ -360,21 +428,36 @@ async function loadProducts() {
     showEmptyList(esc(q ? t('no_match') : t('no_boms')));
   } else {
     document.querySelector('#products tbody').innerHTML = list.map(p =>
-      `<tr data-code="${esc(p.code)}"><td>${esc(p.code)}</td><td>${esc(p.description)}</td><td>${fmtDate(p.mtime)}</td></tr>`).join('');
+      `<tr data-code="${esc(p.code)}"><td>${esc(p.code)}</td><td>${esc(p.description)}</td><td>${fmtDate(p.mtime)}</td><td>${badgesHtml(p.files, p.refs)}</td></tr>`).join('');
   }
-  setListStatus(t('n_products', list.length));
+  listCount = t('n_products', list.length);
+  showListStatus();
 }
 
-document.querySelector('#products tbody').addEventListener('click', e => {
-  const tr = e.target.closest('tr[data-code]');
-  if (!tr) return;
-  tr.parentElement.querySelectorAll('tr.sel').forEach(x => x.classList.remove('sel'));
-  tr.classList.add('sel');
-});
-document.querySelector('#products tbody').addEventListener('dblclick', e => {
-  const tr = e.target.closest('tr[data-code]');
-  if (tr) openProduct(tr.dataset.code);
-});
+// Clicks in the Products and Parts lists: select, open, download ZIP, attachments.
+async function zipOf(code, type) {
+  const url = `/api/package_zip?code=${encodeURIComponent(code)}&type=${encodeURIComponent(type)}`;
+  const r = await fetch(url, { method: 'HEAD' });
+  if (!r.ok) { alert(r.status === 503 ? t('zip_offline') : t('zip_none', type)); return; }
+  location.href = url;
+}
+for (const sel of ['#products tbody', '#parts tbody']) {
+  const tb = document.querySelector(sel);
+  tb.addEventListener('click', e => {
+    const tr = e.target.closest('tr[data-code]');
+    if (!tr) return;
+    tb.querySelectorAll('tr.sel').forEach(x => x.classList.remove('sel'));
+    tr.classList.add('sel');
+    const b = e.target.closest('button');
+    if (b && b.dataset.zip) zipOf(tr.dataset.code, b.dataset.zip);
+    else if (b && b.dataset.ref) openProduct(tr.dataset.code, '📎');
+    else if (b && b.dataset.type) openProduct(tr.dataset.code, b.dataset.type);
+  });
+  tb.addEventListener('dblclick', e => {
+    const tr = e.target.closest('tr[data-code]');
+    if (tr && !e.target.closest('button')) openProduct(tr.dataset.code);
+  });
+}
 document.getElementById('q').addEventListener('keydown', e => {
   if (e.key !== 'Enter') return;
   const rows = document.querySelectorAll('#products tbody tr[data-code]');
@@ -383,13 +466,77 @@ document.getElementById('q').addEventListener('keydown', e => {
 
 async function refreshList() {
   await fetch('/api/refresh');
-  if (configured) setListStatus(t('reading'));
-  pollStatus.wasScanning = true;
   setTimeout(pollStatus, 300);
+}
+
+// ---------- parts and assemblies ----------
+const partsState = { loaded: false, sort: 'code', asc: true, has: {}, onlyFiles: true, filters: {}, facets: { columns: [], types: [] } };
+let partsCount = '';
+
+async function loadFacets() {
+  try { partsState.facets = await (await fetch('/api/parts_facets')).json(); } catch (e) { return; }
+  const f = partsState.facets;
+  let html = f.columns.map((c, i) => `<select data-f="${i}"><option value="">${esc(t('all_values', c.name))}</option>` +
+    c.values.map(v => `<option ${partsState.filters[i] === v ? 'selected' : ''}>${esc(v)}</option>`).join('') + `</select>`).join('');
+  html += `<span class="muted">${esc(t('has'))}</span>` + f.types.map(x =>
+    `<button data-has="${esc(x)}" class="${partsState.has[x] ? 'active' : ''}">${esc(x)}</button>`).join('');
+  html += `<label class="chk"><input type="checkbox" id="only-files" ${partsState.onlyFiles ? 'checked' : ''}>${esc(t('only_files'))}</label>`;
+  document.getElementById('parts-filters').innerHTML = html;
+}
+document.getElementById('parts-filters').addEventListener('click', e => {
+  const b = e.target.closest('button[data-has]');
+  if (!b) return;
+  partsState.has[b.dataset.has] = !partsState.has[b.dataset.has];
+  b.classList.toggle('active');
+  loadParts();
+});
+document.getElementById('parts-filters').addEventListener('change', e => {
+  if (e.target.id === 'only-files') partsState.onlyFiles = e.target.checked;
+  else if (e.target.dataset.f !== undefined) partsState.filters[e.target.dataset.f] = e.target.value;
+  loadParts();
+});
+
+function sortParts(col) {
+  if (partsState.sort === col) partsState.asc = !partsState.asc; else { partsState.sort = col; partsState.asc = true; }
+  loadParts();
+}
+
+async function loadParts() {
+  const ps = partsState, cols = ps.facets.columns;
+  const arrow = c => c === ps.sort ? (ps.asc ? ' ▲' : ' ▼') : '';
+  document.getElementById('parts-head').innerHTML =
+    `<th class="sortable" onclick="sortParts('code')">${esc(t('col_code'))}${arrow('code')}</th>
+     <th class="sortable" onclick="sortParts('desc')">${esc(t('col_desc'))}${arrow('desc')}</th>` +
+    cols.map(c => `<th>${esc(c.name)}</th>`).join('') +
+    `<th>${esc(t('col_used'))}</th><th class="sortable" onclick="sortParts('date')">${esc(t('col_date2'))}${arrow('date')}</th><th>${esc(t('col_files'))}</th>`;
+  const p = new URLSearchParams({ q: document.getElementById('pq').value, sort: ps.sort, asc: ps.asc ? 1 : 0,
+    has: Object.keys(ps.has).filter(k => ps.has[k]).join(','), withfiles: ps.onlyFiles ? 1 : 0 });
+  Object.entries(ps.filters).forEach(([i, v]) => { if (v) p.set('f' + i, v); });
+  const seq = loadParts.seq = (loadParts.seq || 0) + 1;
+  let d;
+  try { d = await (await fetch('/api/parts?' + p)).json(); } catch (e) { return; }
+  if (seq !== loadParts.seq) return;
+  const tb = document.querySelector('#parts tbody');
+  if (!d.rows.length) {
+    tb.innerHTML = `<tr class="msg"><td colspan="${5 + cols.length}" class="empty">${esc(t('parts_empty'))}</td></tr>`;
+  } else {
+    tb.innerHTML = d.rows.map(r => {
+      const used = r.used.length > 3 ? r.used.slice(0, 3).join(', ') + ` +${r.used.length - 3}` : r.used.join(', ');
+      const files = (r.files || []).map(x => x === '📎'
+        ? `<button class="pbadge clip" data-ref="1" title="${esc(t('attachments'))}">📎</button>`
+        : `<button class="pbadge" data-type="${esc(x)}">${esc(x)}</button>`).join('');
+      return `<tr data-code="${esc(r.code)}"><td>${r.assembly ? '▸ ' : ''}${esc(r.code)}</td><td>${esc(r.desc)}</td>` +
+        cols.map((_, i) => `<td>${esc((r.vals || [])[i])}</td>`).join('') +
+        `<td title="${esc(r.used.join(', '))}">${esc(used)}</td><td>${fmtDate(r.mtime)}</td><td>${files}</td></tr>`;
+    }).join('');
+  }
+  partsCount = d.total > d.rows.length ? t('n_parts_cut', d.total, d.rows.length) : t('n_parts', d.total);
+  showListStatus();
 }
 
 // ---------- tabs ----------
 function activateTab(id) {
+  if (id === 'parts' && !partsState.loaded) { partsState.loaded = true; loadFacets().then(loadParts); }
   document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x.id === 'tab-btn-' + id));
   document.querySelectorAll('.pane').forEach(p => p.classList.toggle('active', p.id === 'pane-' + id));
 }
@@ -402,12 +549,19 @@ function closeTab(id, ev) {
   delete openTabs[id];
   document.getElementById('tab-btn-' + id).remove();
   document.getElementById('pane-' + id).remove();
-  activateTab('home');
+  activateTab(st && st.from === 'parts' ? 'parts' : 'home');
 }
 
-async function openProduct(code) {
+// Opens a product (whole BOM) or a part/assembly (the part and its sub-tree).
+// wantType: file type to show first (e.g. '📎' for the attachments).
+async function openProduct(code, wantType) {
   const known = tabOfCode[code.toUpperCase()];
-  if (known) { activateTab(known); return; }
+  if (known) {
+    activateTab(known);
+    if (wantType) { openTabs[known].typeName = wantType; selectRow(known, 0); }
+    return;
+  }
+  const from = document.getElementById('pane-parts').classList.contains('active') ? 'parts' : 'home';
   const r = await fetch('/api/product?code=' + encodeURIComponent(code));
   if (!r.ok) { alert(t('not_found')); return; }
   const d = await r.json();
@@ -417,7 +571,7 @@ async function openProduct(code) {
 
   // Flatten the tree, with the product itself as the top row.
   const rows = [];
-  const root = { item: '', code: d.product.code, desc: d.product.description, qty: '', values: [], files: d.product_files || [], children: d.bom.tree, isRoot: true };
+  const root = { item: '', code: d.product.code, desc: d.product.description, qty: '', values: d.root_values || [], files: d.product_files || [], children: d.bom.tree, isRoot: true };
   (function flat(nodes, depth, parentKey) {
     nodes.forEach((n, i) => {
       const key = parentKey + '/' + i;
@@ -428,7 +582,7 @@ async function openProduct(code) {
 
   openTabs[id] = {
     product: d.product, columns: d.bom.columns, rows,
-    collapsed: {}, sel: 0, mode: null, typeName: null, typeFiles: [], fileIdx: 0,
+    collapsed: {}, sel: 0, mode: null, typeName: wantType || null, typeFiles: [], fileIdx: 0, from,
     zoom: 1, panX: 0, panY: 0, rotX: -0.45, rotY: 0.65, measuring: false
   };
 
@@ -545,7 +699,7 @@ async function selectRow(id, idx) {
   let cur = st.typeFiles.find(x => x.type === st.typeName && x.files.length);
   if (!cur) cur = st.typeFiles.find(x => x.files.length);
   if (cur) st.typeName = cur.type;
-  st.fileIdx = 0;
+  st.fileIdx = 0; st.listPick = false;
   renderTypes(id);
   showFile(id);
 }
@@ -555,14 +709,14 @@ function renderTypes(id) {
   const n = st.rows[st.sel].node;
   const cur = currentFile(st);
   let html = `<span class="title" title="${esc(n.code + ' ' + n.desc)}">${esc(n.code)} ${esc(n.desc)}</span>`;
-  html += st.typeFiles.map(x => `<button class="${cur && x.type === st.typeName ? 'active' : ''}" ${x.files.length ? '' : 'disabled'}
-      data-type="${esc(x.type)}">${esc(x.type)}${x.files.length > 1 ? ' (' + x.files.length + ')' : ''}</button>`).join('');
+  html += st.typeFiles.filter(x => !x.ref || x.files.length).map(x => `<button class="${cur && x.type === st.typeName ? 'active' : ''}" ${x.files.length ? '' : 'disabled'}
+      data-type="${esc(x.type)}" ${x.ref ? `title="${esc(t('attachments'))}"` : ''}>${esc(x.type)}${x.files.length > 1 || (x.list && x.files.length) ? ' (' + x.files.length + ')' : ''}</button>`).join('');
   document.getElementById('types-' + id).innerHTML = html;
 }
 
 function pickType(id, type) {
   const st = openTabs[id];
-  st.typeName = type; st.fileIdx = 0;
+  st.typeName = type; st.fileIdx = 0; st.listPick = false;
   renderTypes(id);
   showFile(id);
 }
@@ -572,11 +726,18 @@ function currentFile(st) {
   return x && x.files.length ? { list: x.files, file: x.files[st.fileIdx] || x.files[0] } : null;
 }
 
+function curType(st) { return (st.typeFiles || []).find(y => y.type === st.typeName); }
+
 function renderTools(id) {
   const st = openTabs[id];
-  const cur = currentFile(st);
+  const cur = currentFile(st), ty = curType(st);
+  const isList = st.mode === 'list';
   let html = '';
-  if (cur && cur.list.length > 1) {
+  if (isList) {
+    html += `<span class="muted">${esc(t('n_files', cur.list.length))}</span>`;
+  } else if (cur && ty.list) {
+    html += `<button onclick="backToList('${id}')">${esc(t('back_list'))}</button><span class="muted">${esc(cur.file.name)}</span>`;
+  } else if (cur && cur.list.length > 1) {
     html += `<select onchange="openTabs['${id}'].fileIdx = +this.value; showFile('${id}')">` +
       cur.list.map((f, i) => `<option value="${i}" ${i === st.fileIdx ? 'selected' : ''}>${esc(f.name)} — ${fmtDate(f.mtime)}</option>`).join('') + `</select>`;
   } else if (cur) {
@@ -589,15 +750,47 @@ function renderTools(id) {
       <span class="meas" id="meas-info-${id}"></span>`;
   }
   html += `<span class="grow"></span>`;
-  if (cur) {
+  if (cur && !isList) {
     html += `<button onclick="openExternal('${id}')" title="${esc(t('open_default'))}">↗ ${esc(t('open'))}</button>
       <button onclick="openFolder('${id}')" title="${esc(t('show_folder'))}">📁</button>
       <button onclick="downloadCurrent('${id}')">⬇ ${esc(t('download'))}</button>`;
   }
-  if (st.typeName) {
+  if (isList && cur.list.length > 1) {
+    html += `<button onclick="downloadItemZip('${id}')" title="${esc(t('zip_item_title'))}">⬇ ${esc(t('zip_item', cur.list.length))}</button>`;
+  }
+  if (st.typeName && ty && !ty.ref && st.rows.length > 1) {
     html += `<button onclick="downloadZip('${id}')" title="${esc(t('zip_title', st.typeName))}">⬇ ${esc(t('zip_all', st.typeName))}</button>`;
   }
   document.getElementById('tools-' + id).innerHTML = html;
+}
+
+function fileIcon(f) {
+  return { pdf: '📕', image: '🖼️', video: '🎬', audio: '🔊', text: '📃', dxf: '📐', iges: '🧊' }[f.viewer] ||
+    (['.xlsx', '.xls', '.csv'].includes(f.ext) ? '📊' : ['.docx', '.doc'].includes(f.ext) ? '📝' : '📄');
+}
+
+function renderFileList(id) {
+  const st = openTabs[id], cur = currentFile(st);
+  document.getElementById('stage-' + id).innerHTML = `<div class="filelist"><table>
+    <thead><tr><th>${esc(t('col_name'))}</th><th>${esc(t('col_date2'))}</th><th>${esc(t('col_size'))}</th><th></th></tr></thead><tbody>` +
+    cur.list.map((f, i) => `<tr ondblclick="listAct('${id}', ${i}, '${f.viewer === 'external' ? 'open' : 'view'}')">
+      <td class="name">${fileIcon(f)} ${esc(f.name)}</td><td>${fmtDate(f.mtime)}</td><td>${fmtSize(f.size)}</td>
+      <td>${f.viewer === 'external' ? '' : `<button onclick="listAct('${id}', ${i}, 'view')">👁 ${esc(t('view'))}</button>`}<button onclick="listAct('${id}', ${i}, 'open')" title="${esc(t('open_default'))}">↗</button><button onclick="listAct('${id}', ${i}, 'folder')" title="${esc(t('show_folder'))}">📁</button><button onclick="listAct('${id}', ${i}, 'download')" title="${esc(t('download'))}">⬇</button></td></tr>`).join('') +
+    `</tbody></table></div>`;
+}
+
+function listAct(id, i, act) {
+  const st = openTabs[id];
+  st.fileIdx = i;
+  if (act === 'view') { st.listPick = true; showFile(id); }
+  else if (act === 'open') openExternal(id);
+  else if (act === 'folder') openFolder(id);
+  else downloadCurrent(id);
+}
+function backToList(id) { openTabs[id].listPick = false; showFile(id); }
+function downloadItemZip(id) {
+  const st = openTabs[id];
+  location.href = `/api/item_zip?code=${encodeURIComponent(st.rows[st.sel].node.code)}&type=${encodeURIComponent(st.typeName)}`;
 }
 
 async function showFile(id) {
@@ -606,7 +799,8 @@ async function showFile(id) {
   const cur = currentFile(st);
   const seq = st.showSeq = (st.showSeq || 0) + 1;
   const stale = () => openTabs[id] !== st || st.showSeq !== seq; // another file was picked meanwhile
-  st.mode = cur ? cur.file.viewer : null;
+  const ty = curType(st);
+  st.mode = !cur ? null : (ty.list && !st.listPick ? 'list' : cur.file.viewer);
   st.cadData = null; st.measuring = false; st.defaultDimText = '';
   st.pt1 = st.pt2 = st.selectedSeg = st.hoverPt = st.hoverSeg = null; st.measureText = '';
   renderTools(id);
@@ -618,7 +812,13 @@ async function showFile(id) {
     return;
   }
   const f = cur.file;
-  if (st.mode === 'pdf') {
+  if (st.mode === 'list') {
+    renderFileList(id);
+  } else if (st.mode === 'video') {
+    stage.innerHTML = `<video src="${esc(fileUrl(f.path))}" controls></video>`;
+  } else if (st.mode === 'audio') {
+    stage.innerHTML = `<audio src="${esc(fileUrl(f.path))}" controls></audio>`;
+  } else if (st.mode === 'pdf') {
     stage.innerHTML = `<iframe src="${esc(fileUrl(f.path))}#view=Fit"></iframe>`;
   } else if (st.mode === 'image') {
     stage.innerHTML = `<img src="${esc(fileUrl(f.path))}" alt="">`;
@@ -668,12 +868,9 @@ function downloadCurrent(id) {
   const cur = currentFile(openTabs[id]);
   if (cur) location.href = fileUrl(cur.file.path, true);
 }
-async function downloadZip(id) {
+function downloadZip(id) {
   const st = openTabs[id];
-  const url = `/api/package_zip?code=${encodeURIComponent(st.product.code)}&type=${encodeURIComponent(st.typeName)}`;
-  const r = await fetch(url, { method: 'HEAD' });
-  if (!r.ok) { alert(r.status === 503 ? t('zip_offline') : t('zip_none', st.typeName)); return; }
-  location.href = url;
+  zipOf(st.product.code, st.typeName);
 }
 
 function startResize(ev, id) {
@@ -1047,6 +1244,7 @@ function addFileTypeRow(ft) {
     <td><input class="ft-ext" value="${esc((ft.extensions || []).join(', '))}" placeholder=".pdf"></td>
     <td><input class="ft-folders" value="${esc((ft.folders || []).join('; '))}" placeholder="\\\\server\\drawings"></td>
     <td><select class="ft-match"><option value="exact" ${ft.match === 'exact' ? 'selected' : ''}>${esc(t('ft_exact'))}</option><option value="prefix" ${ft.match !== 'exact' ? 'selected' : ''}>${esc(t('ft_prefix'))}</option></select></td>
+    <td style="text-align:center"><input type="checkbox" class="ft-list" ${ft.list ? 'checked' : ''} title="${esc(t('ft_list_hint'))}"></td>
     <td><button onclick="this.closest('tr').remove()" title="${esc(t('ft_remove'))}">✕</button></td>`;
   document.getElementById('ft-body').appendChild(tr);
 }
@@ -1058,6 +1256,7 @@ function fillSettings(c) {
   v('s-det-prefix', c.details_prefix); v('s-det-file', c.details_file);
   v('s-c-item', c.columns.item); v('s-c-code', c.columns.code); v('s-c-desc', c.columns.description); v('s-c-qty', c.columns.qty);
   v('s-hidden', (c.hidden_columns || []).join(', '));
+  v('s-ref-folder', c.ref_folder); v('s-parts-cols', (c.parts_columns || []).join(', '));
   document.getElementById('ft-body').innerHTML = '';
   (c.file_types || []).forEach(addFileTypeRow);
 }
@@ -1073,6 +1272,7 @@ async function restoreDefaults() {
   // Keep what is specific to this computer: language and folders.
   d.language = document.getElementById('s-lang').value;
   d.bom_folder = document.getElementById('s-bom-folder').value;
+  d.ref_folder = document.getElementById('s-ref-folder').value;
   const folders = {};
   document.querySelectorAll('#ft-body tr').forEach(tr => {
     folders[tr.querySelector('.ft-name').value.trim().toUpperCase()] = tr.querySelector('.ft-folders').value.split(';').map(x => x.trim()).filter(Boolean);
@@ -1090,11 +1290,13 @@ async function saveSettings() {
     details_prefix: g('s-det-prefix'), details_file: g('s-det-file').trim(),
     columns: { item: g('s-c-item'), code: g('s-c-code'), description: g('s-c-desc'), qty: g('s-c-qty') },
     hidden_columns: split(g('s-hidden'), ','),
+    ref_folder: g('s-ref-folder').trim(), parts_columns: split(g('s-parts-cols'), ','),
     file_types: [...document.querySelectorAll('#ft-body tr')].map(tr => ({
       name: tr.querySelector('.ft-name').value.trim(),
       extensions: split(tr.querySelector('.ft-ext').value, ','),
       folders: split(tr.querySelector('.ft-folders').value, ';'),
-      match: tr.querySelector('.ft-match').value
+      match: tr.querySelector('.ft-match').value,
+      list: tr.querySelector('.ft-list').checked
     })).filter(f => f.name)
   });
   const r = await fetch('/api/config', { method: 'POST', body: JSON.stringify(c) });
@@ -1121,8 +1323,6 @@ window.addEventListener('pagehide', () => navigator.sendBeacon('/api/closing'));
   document.documentElement.lang = lang;
   applyI18n(document);
   await pollStatus();
-  pollStatus.wasScanning = true; // load the list as soon as the first scan ends
-  await loadProducts();
   setInterval(pollStatus, 4000);
 })();
 </script>

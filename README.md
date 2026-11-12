@@ -12,6 +12,9 @@ Made for the shop floor: one portable `.exe`, no install, no database, no accoun
 - **Files linked to every part**: each line shows which file types exist for it (PDF, DXF, IGES…)
 - **Built-in viewers**: PDF, DXF (2D) and IGES (3D, shaded) with zoom, pan, rotate and point/line **measuring**; images and text/CNC files too. Anything else opens in its default program
 - **Revisions**: when several files match a part (`ABC-100.pdf`, `ABC-100_rev2.pdf`), pick one from a list; exact name first, then newest
+- **Parts and assemblies tab**: every part of every BOM in one searchable list, with where it is used, filters by any spreadsheet column you choose and by available file type; opening an assembly shows its own sub-tree
+- **File list for machine programs**: mark a file type as *List* (e.g. CNC with `.mpr, .nc, .tap`…) to see all files of a part with date and size, and download them one by one or zipped
+- **Attachments** (📎): photos, videos and documents kept in a folder or file named after the code
 - **ZIP package**: all PDFs (or DXFs, or…) of a product in one click
 - **Your spreadsheets, your columns**: `.xlsx`, `.csv` (comma or semicolon) or tab-separated `.txt`. Only four key columns need to be found (item, code, description, quantity); every other column is shown as it is
 - **Optional details sheet** joined by part code (finish, color, supplier…), one per product or one shared file
@@ -96,7 +99,7 @@ EngTree Viewer:
 
 ## Roadmap
 
-- Parts list / production list for a product with quantities
+- Production list for a product with quantities
 - Update check through GitHub Releases (optional, off with one click)
 - Built-in "report a problem" with an exportable log for PCs without internet
 

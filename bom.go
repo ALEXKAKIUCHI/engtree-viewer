@@ -15,6 +15,10 @@ type Product struct {
 	BomFile     string  `json:"bom_file"`
 	DetailsFile string  `json:"details_file,omitempty"`
 	Mtime       float64 `json:"mtime"`
+
+	DetailsMtime float64  `json:"details_mtime,omitempty"`
+	Files        []string `json:"files"` // file types found for the product or its parts
+	Refs         int      `json:"refs"`  // number of attachments
 }
 
 // TreeNode is one BOM line. Values line up with BomResult.Columns.
@@ -185,7 +189,7 @@ func splitName(fileName, prefix, sep string) (string, string) {
 func scanProducts(cfg Config) []Product {
 	entries := scanDirCached(cfg.BomFolder)
 	isXLSX := func(n string) bool { return strings.EqualFold(filepath.Ext(n), ".xlsx") }
-	details := map[string]string{}
+	details := map[string]DirEntryInfo{}
 	boms := map[string]DirEntryInfo{}
 
 	for _, e := range entries {
@@ -198,8 +202,8 @@ func scanProducts(cfg Config) []Product {
 		if cfg.DetailsPrefix != "" && hasPrefixFold(e.Name, cfg.DetailsPrefix) {
 			code, _ := splitName(e.Name, cfg.DetailsPrefix, cfg.NameSeparator)
 			key := strings.ToUpper(code)
-			if prev, ok := details[key]; !ok || (!isXLSX(prev) && isXLSX(e.Name)) {
-				details[key] = e.FullPath
+			if prev, ok := details[key]; !ok || (!isXLSX(prev.Name) && isXLSX(e.Name)) {
+				details[key] = e
 			}
 			continue
 		}
@@ -221,11 +225,13 @@ func scanProducts(cfg Config) []Product {
 	for key, e := range boms {
 		code, desc := splitName(e.Name, cfg.BomPrefix, cfg.NameSeparator)
 		list = append(list, Product{
-			Code:        code,
-			Description: desc,
-			BomFile:     e.FullPath,
-			DetailsFile: details[key],
-			Mtime:       e.Mtime,
+			Code:         code,
+			Description:  desc,
+			BomFile:      e.FullPath,
+			DetailsFile:  details[key].FullPath,
+			DetailsMtime: details[key].Mtime,
+			Mtime:        e.Mtime,
+			Files:        []string{},
 		})
 	}
 	sort.Slice(list, func(i, j int) bool {
