@@ -1,0 +1,924 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>EngTree Viewer</title>
+<link rel="icon" href="/assets/app_icon.ico">
+<link rel="icon" type="image/png" href="/assets/icon_256.png">
+<style>
+  * { box-sizing: border-box; font-family: 'Segoe UI', system-ui, sans-serif; font-size: 10pt; }
+  html, body { margin: 0; height: 100%; background: #1e1e2e; color: #e0e0e0; overflow: hidden; display: flex; flex-direction: column; }
+  button { background: #2a2a3e; border: 1px solid #3a3a4e; border-radius: 5px; padding: 5px 12px; color: #e0e0e0; cursor: pointer; }
+  button:hover:not(:disabled) { background: #34344a; border-color: #4a9eff; }
+  button:disabled { opacity: .4; cursor: default; }
+  button.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+  button.active { background: #4a9eff; border-color: #4a9eff; color: #fff; font-weight: 600; }
+  input, select { background: #2a2a3e; border: 1px solid #3a3a4e; border-radius: 5px; padding: 6px 8px; color: #fff; }
+  input:focus, select:focus { outline: none; border-color: #4a9eff; }
+
+  #offline { display: none; background: #b91c1c; color: #fff; padding: 6px 14px; font-weight: 600; }
+  .menubar { height: 40px; background: #2a2a3e; border-bottom: 1px solid #3a3a4e; display: flex; align-items: center; gap: 6px; padding: 0 12px; flex-shrink: 0; }
+  .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; margin-right: 14px; }
+  .brand img { width: 22px; height: 22px; }
+  .menu-item { cursor: pointer; padding: 5px 10px; border-radius: 4px; }
+  .menu-item:hover { background: #4a9eff; color: #fff; }
+
+  .tabbar { height: 34px; display: flex; align-items: flex-end; gap: 3px; padding: 4px 8px 0; border-bottom: 1px solid #3a3a4e; overflow-x: auto; flex-shrink: 0; }
+  .tab { background: #2a2a3e; padding: 6px 12px; border-radius: 6px 6px 0 0; cursor: pointer; white-space: nowrap; display: flex; gap: 8px; align-items: center; }
+  .tab.active { background: #4a9eff; color: #fff; font-weight: 600; }
+  .tab .x { padding: 0 4px; border-radius: 3px; }
+  .tab .x:hover { background: rgba(0,0,0,.3); }
+  #workspace { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .pane { flex: 1; display: none; overflow: hidden; }
+  .pane.active { display: flex; }
+
+  .search-pane { flex-direction: column; padding: 10px 14px; gap: 8px; width: 100%; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .grow { flex: 1; }
+  .muted { color: #9aa0b0; font-size: 9pt; }
+  .table-wrap { flex: 1; overflow: auto; border: 1px solid #3a3a4e; border-radius: 6px; background: #232336; }
+  table { width: 100%; border-collapse: collapse; }
+  th { position: sticky; top: 0; background: #2a2a3e; padding: 7px 10px; text-align: left; border-bottom: 1px solid #3a3a4e; white-space: nowrap; z-index: 1; }
+  th.sortable { cursor: pointer; }
+  th.sortable:hover { color: #fff; background: #34344a; }
+  td { padding: 6px 10px; border-bottom: 1px solid #2f2f46; white-space: nowrap; }
+  tbody tr:nth-child(even) { background: #292940; }
+  tbody tr:hover { background: #343a58; cursor: pointer; }
+  tr.sel, tr.sel:hover { background: #2563eb !important; color: #fff; }
+  .empty { padding: 30px; color: #9aa0b0; line-height: 1.6; }
+
+  .split { display: flex; width: 100%; height: 100%; }
+  .left { width: 46%; min-width: 360px; display: flex; flex-direction: column; padding: 8px; gap: 6px; }
+  .divider { width: 5px; cursor: col-resize; background: #3a3a4e; flex-shrink: 0; }
+  .divider:hover { background: #4a9eff; }
+  .right { flex: 1; display: flex; flex-direction: column; padding: 8px; gap: 6px; min-width: 0; }
+  .toggle { display: inline-block; width: 16px; color: #4a9eff; font-weight: 700; cursor: pointer; text-align: center; }
+  .badge { display: inline-block; font-size: 8pt; padding: 1px 5px; margin-right: 3px; border-radius: 3px; background: #1f3a5f; color: #bfdbfe; }
+  tr.sel .badge { background: rgba(255,255,255,.25); color: #fff; }
+  tr.root td { font-weight: 600; }
+  tr.dim td { opacity: .35; }
+  .bar { display: flex; align-items: center; gap: 6px; background: #2a2a3e; padding: 5px 8px; border-radius: 5px; flex-wrap: wrap; }
+  .bar .title { font-weight: 600; margin-right: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 40%; }
+  .meas { color: #ffd166; font-weight: 600; padding: 0 6px; }
+  .stage { flex: 1; background: #191926; border: 1px solid #3a3a4e; border-radius: 6px; position: relative; overflow: hidden; display: flex; }
+  .stage iframe { width: 100%; height: 100%; border: 0; background: #fff; }
+  .stage img { max-width: 100%; max-height: 100%; margin: auto; object-fit: contain; }
+  .stage pre { margin: 0; padding: 12px; overflow: auto; width: 100%; font-family: Consolas, monospace; font-size: 9pt; user-select: text; }
+  canvas.cad-canvas { width: 100%; height: 100%; display: block; cursor: crosshair; }
+  .warn { background: #3b2f0b; border: 1px solid #a16207; color: #fde68a; padding: 6px 10px; border-radius: 5px; font-size: 9pt; }
+
+  .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.65); display: none; align-items: center; justify-content: center; z-index: 50; }
+  .modal { background: #1e1e2e; border: 1px solid #4a9eff; border-radius: 8px; width: 820px; max-width: 95vw; max-height: 92vh; overflow: auto; padding: 18px 20px; }
+  .modal h2 { margin: 0 0 12px; font-size: 13pt; }
+  .modal h3 { margin: 16px 0 6px; font-size: 10.5pt; color: #93c5fd; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; }
+  .field label { display: block; font-weight: 600; margin-bottom: 3px; color: #cfd3e0; }
+  .field input { width: 100%; }
+  .field .hint { font-size: 8.5pt; color: #8b90a0; margin-top: 2px; }
+  .ft-table td, .ft-table th { padding: 4px; border: 0; background: none !important; }
+  .ft-table input { width: 100%; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+  a { color: #7cb7ff; cursor: pointer; }
+</style>
+</head>
+<body>
+<div id="offline">⚠ BOM folder not reachable (network or VPN down?). The product list shows the last saved data.</div>
+
+<div class="menubar">
+  <div class="brand"><img src="/assets/icon_256.png" alt="">EngTree Viewer</div>
+  <span class="menu-item" onclick="refreshList()">⟳ Refresh</span>
+  <span class="menu-item" onclick="openSettings()">⚙ Settings</span>
+  <span class="menu-item" onclick="openAbout()">ⓘ About</span>
+</div>
+
+<div class="tabbar" id="tabbar">
+  <div class="tab active" id="tab-btn-home" onclick="activateTab('home')">Products</div>
+</div>
+
+<div id="workspace">
+  <div class="pane active" id="pane-home">
+    <div class="search-pane">
+      <div class="row">
+        <input id="q" class="grow" placeholder="Search by code or description…" oninput="debounce(loadProducts, 200)()" autofocus>
+      </div>
+      <div class="table-wrap" id="products-wrap">
+        <table id="products">
+          <thead><tr>
+            <th class="sortable" onclick="sortBy('code')" id="h-code">Code</th>
+            <th class="sortable" onclick="sortBy('desc')" id="h-desc">Description</th>
+            <th class="sortable" onclick="sortBy('date')" id="h-date">BOM date</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="muted" id="list-status"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Settings -->
+<div class="modal-bg" id="settings">
+  <div class="modal">
+    <h2>Settings</h2>
+    <h3>BOM spreadsheets</h3>
+    <div class="grid2">
+      <div class="field" style="grid-column: span 2"><label>BOM folder</label><input id="s-bom-folder" placeholder="e.g. \\server\engineering\BOM or C:\Projects\BOM">
+        <div class="hint">Each spreadsheet (.xlsx, .csv, .txt) in this folder is one product. Code and description come from the file name.</div></div>
+      <div class="field"><label>BOM file prefix</label><input id="s-bom-prefix" placeholder="(empty = every spreadsheet)">
+        <div class="hint">e.g. "BOM - " for "BOM - ABC-100 - Side table.xlsx"</div></div>
+      <div class="field"><label>Separator between code and description</label><input id="s-sep" placeholder=" - "></div>
+      <div class="field"><label>Details file prefix (optional)</label><input id="s-det-prefix" placeholder="e.g. PARTS - ">
+        <div class="hint">One details spreadsheet per product, in the BOM folder, joined by part code.</div></div>
+      <div class="field"><label>Or one shared details file (optional)</label><input id="s-det-file" placeholder="full path to .xlsx/.csv"></div>
+    </div>
+    <h3>Column names</h3>
+    <div class="muted" style="margin-bottom:6px">Alternatives separated by |. Case, accents and punctuation are ignored. All other columns are shown as they are.</div>
+    <div class="grid2">
+      <div class="field"><label>Item number (hierarchy 1, 1.1, 1.1.1)</label><input id="s-c-item"></div>
+      <div class="field"><label>Part code</label><input id="s-c-code"></div>
+      <div class="field"><label>Description</label><input id="s-c-desc"></div>
+      <div class="field"><label>Quantity</label><input id="s-c-qty"></div>
+      <div class="field" style="grid-column: span 2"><label>Hide these columns</label><input id="s-hidden" placeholder="comma separated, e.g. Mass, Configuration"></div>
+    </div>
+    <h3>File types</h3>
+    <div class="muted" style="margin-bottom:6px">Several types may share one folder: files are told apart by extension. Separate several folders with ";". "Prefix" also finds "ABC-100 - Side.pdf" and "ABC-100_rev2.pdf" for code ABC-100 (but never "ABC-1000").</div>
+    <table class="ft-table">
+      <thead><tr><th style="width:14%">Name</th><th style="width:16%">Extensions</th><th>Folders</th><th style="width:11%">Match</th><th style="width:4%"></th></tr></thead>
+      <tbody id="ft-body"></tbody>
+    </table>
+    <button onclick="addFileTypeRow({name:'',extensions:[],folders:[],match:'exact'})">+ Add file type</button>
+    <div class="modal-actions">
+      <button onclick="restoreDefaults()" style="margin-right:auto">Restore defaults</button>
+      <button onclick="closeModal('settings')">Cancel</button>
+      <button class="primary" onclick="saveSettings()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- About -->
+<div class="modal-bg" id="about">
+  <div class="modal" style="width:520px">
+    <h2>EngTree Viewer <span id="ab-ver" class="muted"></span></h2>
+    <p>Browse BOMs as a tree and open each part's drawings, DXF and 3D files in one place.</p>
+    <p class="muted">Free and open source (MIT). Created by Alexsander Kakiuchi.</p>
+    <p><b>Privacy:</b> EngTree only reads the folders you configure. It sends nothing over the internet and collects no data.</p>
+    <p class="muted">Settings file: <span id="ab-cfg"></span></p>
+    <p><a onclick="openRepo('')">Project page</a> · <a onclick="openRepo('/issues/new')">Report a problem or suggest an improvement</a></p>
+    <div class="modal-actions"><button onclick="closeModal('about')">Close</button></div>
+  </div>
+</div>
+
+<script>
+const openTabs = {};
+let sortCol = 'code', sortAsc = true, lastOnline = true, cfgCache = null;
+
+// ---------- helpers ----------
+function esc(t) { return String(t ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function debounce(fn, ms) { return () => { clearTimeout(fn._t); fn._t = setTimeout(fn, ms); }; }
+function fmtDate(s) { if (!s) return ''; const d = new Date(s * 1000); return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
+function fmtSize(n) { return n > 1048576 ? (n/1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n/1024)) + ' KB'; }
+function fileUrl(p, dl) { return '/api/file?path=' + encodeURIComponent(p) + (dl ? '&download=1' : ''); }
+function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+function tabKey(code) { return 'p_' + code.replace(/[^A-Za-z0-9_-]/g, '_'); }
+
+// ---------- status / list ----------
+async function pollStatus() {
+  try {
+    const r = await fetch('/api/status');
+    const s = await r.json();
+    document.getElementById('offline').style.display = (s.configured && !s.online) ? 'block' : 'none';
+    if (!s.configured) {
+      showEmptyList(`Welcome! Start by telling EngTree where your BOM spreadsheets and drawings are.<br><br><button class="primary" onclick="openSettings()">Open settings</button>`);
+    } else {
+      if (!lastOnline && s.online) loadProducts();
+      if (s.scanning) document.getElementById('list-status').innerText = 'Reading the BOM folder…';
+      else if (pollStatus.wasScanning) loadProducts();
+    }
+    pollStatus.wasScanning = s.scanning;
+    lastOnline = s.online;
+    pollStatus.msg = s.message;
+  } catch (e) {}
+}
+
+function showEmptyList(html) {
+  document.querySelector('#products tbody').innerHTML = `<tr><td colspan="3" class="empty" style="white-space:normal">${html}</td></tr>`;
+}
+
+function sortBy(col) {
+  if (sortCol === col) sortAsc = !sortAsc; else { sortCol = col; sortAsc = true; }
+  loadProducts();
+}
+
+async function loadProducts() {
+  const q = document.getElementById('q').value;
+  const r = await fetch(`/api/products?q=${encodeURIComponent(q)}&sort=${sortCol}&asc=${sortAsc ? 1 : 0}`);
+  const list = await r.json();
+  ['code','desc','date'].forEach(c => {
+    const h = document.getElementById('h-' + c);
+    h.innerText = h.innerText.replace(/ [▲▼]$/, '') + (c === sortCol ? (sortAsc ? ' ▲' : ' ▼') : '');
+  });
+  const tb = document.querySelector('#products tbody');
+  if (!list.length) {
+    if (pollStatus.msg === 'not_configured') return;
+    showEmptyList(q ? 'No product matches this search.' : 'No BOM spreadsheets found. Check the BOM folder and file prefix in Settings.');
+  } else {
+    tb.innerHTML = list.map(p => `<tr ondblclick="openProduct('${esc(p.code)}')" onclick="selRow(this)">
+      <td>${esc(p.code)}</td><td>${esc(p.description)}</td><td>${fmtDate(p.mtime)}</td></tr>`).join('');
+  }
+  document.getElementById('list-status').innerText = `${list.length} product(s) — double-click to open`;
+}
+
+function selRow(tr) { tr.parentElement.querySelectorAll('tr.sel').forEach(x => x.classList.remove('sel')); tr.classList.add('sel'); }
+
+async function refreshList() {
+  await fetch('/api/refresh');
+  document.getElementById('list-status').innerText = 'Reading the BOM folder…';
+  setTimeout(pollStatus, 300);
+}
+
+// ---------- tabs ----------
+function activateTab(id) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.id === 'tab-btn-' + id));
+  document.querySelectorAll('.pane').forEach(p => p.classList.toggle('active', p.id === 'pane-' + id));
+}
+
+function closeTab(id, ev) {
+  ev.stopPropagation();
+  const st = openTabs[id];
+  if (st && st.stageObserver) st.stageObserver.disconnect();
+  delete openTabs[id];
+  document.getElementById('tab-btn-' + id).remove();
+  document.getElementById('pane-' + id).remove();
+  activateTab('home');
+}
+
+async function openProduct(code) {
+  const id = tabKey(code);
+  if (openTabs[id]) { activateTab(id); return; }
+  const r = await fetch('/api/product?code=' + encodeURIComponent(code));
+  if (!r.ok) { alert('Product not found. Try Refresh.'); return; }
+  const d = await r.json();
+
+  // Flatten the tree, with the product itself as the top row.
+  const rows = [];
+  const root = { item: '', code: d.product.code, desc: d.product.description, qty: '', values: [], files: d.product_files || [], children: d.bom.tree, isRoot: true };
+  (function flat(nodes, depth, parentKey) {
+    nodes.forEach((n, i) => {
+      const key = parentKey + '/' + i;
+      rows.push({ node: n, depth, key, parentKey, hasKids: n.children && n.children.length > 0 });
+      if (n.children) flat(n.children, depth + 1, key);
+    });
+  })([root], 0, '');
+
+  openTabs[id] = {
+    product: d.product, columns: d.bom.columns, rows, fileTypes: d.file_types,
+    collapsed: {}, sel: 0, mode: null, typeName: null, files: [], fileIdx: 0,
+    zoom: 1, panX: 0, panY: 0, rotX: -0.45, rotY: 0.65, measuring: false
+  };
+
+  const tab = document.createElement('div');
+  tab.className = 'tab'; tab.id = 'tab-btn-' + id;
+  tab.innerHTML = `${esc(code)} <span class="x" onclick="closeTab('${id}', event)">✕</span>`;
+  tab.onclick = () => activateTab(id);
+  document.getElementById('tabbar').appendChild(tab);
+
+  const pane = document.createElement('div');
+  pane.className = 'pane'; pane.id = 'pane-' + id;
+  const warn = [...d.bom.warnings, ...(d.online ? [] : ['BOM folder not reachable: the tree and files cannot be loaded right now.'])];
+  pane.innerHTML = `
+    <div class="split">
+      <div class="left" id="left-${id}">
+        <div class="row">
+          <input class="grow" placeholder="Filter this BOM…" oninput="filterTree('${id}', this.value)">
+          <button onclick="expandAll('${id}', true)" title="Expand all">⊞</button>
+          <button onclick="expandAll('${id}', false)" title="Collapse all">⊟</button>
+        </div>
+        ${warn.map(w => `<div class="warn">${esc(w)}</div>`).join('')}
+        <div class="table-wrap" id="tree-${id}"></div>
+        <div class="muted">${rows.length - 1} BOM line(s) · ↑ ↓ to move</div>
+      </div>
+      <div class="divider" onmousedown="startResize(event, '${id}')"></div>
+      <div class="right">
+        <div class="bar" id="types-${id}"></div>
+        <div class="bar" id="tools-${id}"></div>
+        <div class="stage" id="stage-${id}"></div>
+      </div>
+    </div>`;
+  document.getElementById('workspace').appendChild(pane);
+  activateTab(id);
+  renderTree(id);
+  selectRow(id, 0);
+}
+
+// ---------- tree ----------
+function isHidden(st, row) {
+  let pk = row.parentKey;
+  while (pk) {
+    if (st.collapsed[pk]) return true;
+    pk = pk.substring(0, pk.lastIndexOf('/'));
+  }
+  return false;
+}
+
+function renderTree(id) {
+  const st = openTabs[id];
+  const extra = st.columns.map(c => `<th>${esc(c)}</th>`).join('');
+  let html = `<table><thead><tr><th>Item</th><th>Code</th><th>Description</th><th>Qty</th><th>Files</th>${extra}</tr></thead><tbody>`;
+  const f = (st.filter || '').toLowerCase();
+  st.rows.forEach((r, i) => {
+    if (isHidden(st, r)) return;
+    const n = r.node;
+    const match = !f || [n.code, n.desc, ...(n.values || [])].some(v => String(v || '').toLowerCase().includes(f));
+    const tog = r.hasKids ? `<span class="toggle" onclick="toggleNode('${id}', '${r.key}', event)">${st.collapsed[r.key] ? '+' : '−'}</span>` : '<span class="toggle"></span>';
+    const cls = [i === st.sel ? 'sel' : '', n.isRoot ? 'root' : '', match ? '' : 'dim'].join(' ');
+    html += `<tr class="${cls}" id="row-${id}-${i}" onclick="selectRow('${id}', ${i})">
+      <td style="padding-left:${6 + r.depth * 16}px">${tog}${esc(n.item)}</td>
+      <td>${esc(n.code)}</td><td>${esc(n.desc)}</td><td>${esc(n.qty)}</td>
+      <td>${(n.files || []).map(t => `<span class="badge">${esc(t)}</span>`).join('')}</td>
+      ${st.columns.map((_, k) => `<td>${esc((n.values || [])[k])}</td>`).join('')}</tr>`;
+  });
+  document.getElementById('tree-' + id).innerHTML = html + '</tbody></table>';
+}
+
+function toggleNode(id, key, ev) {
+  ev.stopPropagation();
+  const st = openTabs[id];
+  st.collapsed[key] = !st.collapsed[key];
+  renderTree(id);
+}
+
+function expandAll(id, open) {
+  const st = openTabs[id];
+  st.collapsed = {};
+  if (!open) st.rows.forEach(r => { if (r.hasKids && r.depth > 0) st.collapsed[r.key] = true; });
+  renderTree(id);
+}
+
+function filterTree(id, text) {
+  const st = openTabs[id];
+  st.filter = text;
+  if (text) st.collapsed = {};
+  renderTree(id);
+}
+
+async function selectRow(id, idx) {
+  const st = openTabs[id];
+  st.sel = idx;
+  document.querySelectorAll(`#tree-${id} tr.sel`).forEach(t => t.classList.remove('sel'));
+  const tr = document.getElementById(`row-${id}-${idx}`);
+  if (tr) { tr.classList.add('sel'); tr.scrollIntoView({ block: 'nearest' }); }
+
+  const code = st.rows[idx].node.code;
+  const r = await fetch('/api/item_files?code=' + encodeURIComponent(code));
+  if (st.sel !== idx) return; // user already moved on
+  st.typeFiles = await r.json();
+  // Keep the same file type while moving through the tree, if this part has it.
+  let t = st.typeFiles.find(x => x.type === st.typeName && x.files.length);
+  if (!t) t = st.typeFiles.find(x => x.files.length);
+  st.typeName = t ? t.type : null;
+  st.fileIdx = 0;
+  renderTypes(id);
+  showFile(id);
+}
+
+function renderTypes(id) {
+  const st = openTabs[id];
+  const n = st.rows[st.sel].node;
+  let html = `<span class="title" title="${esc(n.code + ' ' + n.desc)}">${esc(n.code)} ${esc(n.desc)}</span>`;
+  html += st.typeFiles.map(t => `<button class="${t.type === st.typeName ? 'active' : ''}" ${t.files.length ? '' : 'disabled'}
+      onclick="pickType('${id}', '${esc(t.type)}')">${esc(t.type)}${t.files.length > 1 ? ' (' + t.files.length + ')' : ''}</button>`).join('');
+  document.getElementById('types-' + id).innerHTML = html;
+}
+
+function pickType(id, type) {
+  const st = openTabs[id];
+  st.typeName = type; st.fileIdx = 0;
+  renderTypes(id);
+  showFile(id);
+}
+
+function currentFile(st) {
+  const t = (st.typeFiles || []).find(x => x.type === st.typeName);
+  return t && t.files.length ? { list: t.files, file: t.files[st.fileIdx] || t.files[0] } : null;
+}
+
+function renderTools(id) {
+  const st = openTabs[id];
+  const cur = currentFile(st);
+  let html = '';
+  if (cur && cur.list.length > 1) {
+    html += `<select onchange="openTabs['${id}'].fileIdx = +this.value; showFile('${id}')">` +
+      cur.list.map((f, i) => `<option value="${i}" ${i === st.fileIdx ? 'selected' : ''}>${esc(f.name)} — ${fmtDate(f.mtime)}</option>`).join('') + `</select>`;
+  } else if (cur) {
+    html += `<span class="muted">${esc(cur.file.name)} · ${fmtDate(cur.file.mtime)} · ${fmtSize(cur.file.size)}</span>`;
+  }
+  if (st.mode === 'dxf' || st.mode === 'iges') {
+    html += `<button onclick="zoomViewer('${id}', 1.25)">＋</button><button onclick="zoomViewer('${id}', 0.8)">－</button>
+      <button onclick="resetViewer('${id}')">Fit</button>
+      <button id="btn-meas-${id}" onclick="toggleMeasure('${id}')">📏 Measure</button>
+      <span class="meas" id="meas-info-${id}"></span>`;
+  }
+  html += `<span class="grow"></span>`;
+  if (cur) {
+    html += `<button onclick="openExternal('${id}')" title="Open with the default program">↗ Open</button>
+      <button onclick="openFolder('${id}')" title="Show in folder">📁</button>
+      <button onclick="location.href=fileUrl(currentFile(openTabs['${id}']).file.path, true)">⬇ Download</button>`;
+  }
+  if (st.typeName) {
+    html += `<button onclick="downloadZip('${id}')" title="All ${esc(st.typeName)} files of this product in one ZIP">⬇ ZIP all ${esc(st.typeName)}</button>`;
+  }
+  document.getElementById('tools-' + id).innerHTML = html;
+}
+
+async function showFile(id) {
+  const st = openTabs[id];
+  const stage = document.getElementById('stage-' + id);
+  const cur = currentFile(st);
+  st.mode = cur ? cur.file.viewer : null;
+  st.cadData = null; st.measuring = false;
+  st.pt1 = st.pt2 = st.selectedSeg = st.hoverPt = st.hoverSeg = null; st.measureText = '';
+  renderTools(id);
+
+  if (!cur) {
+    const n = st.rows[st.sel].node;
+    stage.innerHTML = `<div class="empty">No files found for <b>${esc(n.code || '(no code)')}</b>.<br>
+      <span class="muted">Check the file type folders in Settings, or whether the file name matches the part code.</span></div>`;
+    return;
+  }
+  const f = cur.file;
+  if (st.mode === 'pdf') {
+    stage.innerHTML = `<iframe src="${fileUrl(f.path)}#view=Fit"></iframe>`;
+  } else if (st.mode === 'image') {
+    stage.innerHTML = `<img src="${fileUrl(f.path)}" alt="">`;
+  } else if (st.mode === 'text') {
+    const r = await fetch(fileUrl(f.path));
+    const t = await r.text();
+    stage.innerHTML = `<pre>${esc(t.length > 500000 ? t.slice(0, 500000) + '\n…' : t)}</pre>`;
+  } else if (st.mode === 'dxf' || st.mode === 'iges') {
+    stage.innerHTML = `<canvas class="cad-canvas" id="canvas-${id}"></canvas>`;
+    watchStageResize(id);
+    const r = await fetch(`/api/cad_data?path=${encodeURIComponent(f.path)}&kind=${st.mode}`);
+    st.cadData = await r.json();
+    st.zoom = 1; st.panX = 0; st.panY = 0;
+    const d = st.cadData;
+    st.defaultDimText = st.mode === 'dxf'
+      ? `${(d.width || 0).toFixed(1)} × ${(d.height || 0).toFixed(1)} mm`
+      : `${(d.dx || 0).toFixed(1)} × ${(d.dy || 0).toFixed(1)} × ${(d.dz || 0).toFixed(1)} mm`;
+    const mi = document.getElementById('meas-info-' + id);
+    if (mi) mi.innerText = st.defaultDimText;
+    setupCanvasInteractions(id);
+    drawCadCanvas(id);
+  } else {
+    stage.innerHTML = `<div class="empty">EngTree has no built-in viewer for <b>${esc(f.ext)}</b> files.<br><br>
+      <button class="primary" onclick="openExternal('${id}')">Open with the default program</button></div>`;
+  }
+}
+
+async function openExternal(id) {
+  const cur = currentFile(openTabs[id]);
+  if (cur) await fetch('/api/open_external?path=' + encodeURIComponent(cur.file.path), { method: 'POST' });
+}
+async function openFolder(id) {
+  const cur = currentFile(openTabs[id]);
+  if (cur) await fetch('/api/open_folder?path=' + encodeURIComponent(cur.file.path), { method: 'POST' });
+}
+async function downloadZip(id) {
+  const st = openTabs[id];
+  const url = `/api/package_zip?code=${encodeURIComponent(st.product.code)}&type=${encodeURIComponent(st.typeName)}`;
+  const r = await fetch(url, { method: 'HEAD' });
+  if (!r.ok) { alert(await (await fetch(url)).text()); return; }
+  location.href = url;
+}
+
+function startResize(ev, id) {
+  ev.preventDefault();
+  const left = document.getElementById('left-' + id);
+  const startX = ev.clientX, startW = left.offsetWidth;
+  const move = e => { left.style.width = Math.max(300, startW + e.clientX - startX) + 'px'; };
+  const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+  window.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', up);
+}
+
+window.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  const active = document.querySelector('.tab.active');
+  const id = active && active.id.replace('tab-btn-', '');
+  const st = openTabs[id];
+  if (!st || (e.key !== 'ArrowDown' && e.key !== 'ArrowUp')) return;
+  e.preventDefault();
+  const step = e.key === 'ArrowDown' ? 1 : -1;
+  for (let i = st.sel + step; i >= 0 && i < st.rows.length; i += step) {
+    if (!isHidden(st, st.rows[i])) { selectRow(id, i); break; }
+  }
+});
+
+// ---------- CAD viewer (DXF 2D / IGES 3D) ----------
+function zoomViewer(tabId, factor) {
+  const st = openTabs[tabId];
+  st.zoom *= factor;
+  drawCadCanvas(tabId);
+}
+
+function resetViewer(tabId) {
+  const st = openTabs[tabId];
+  st.zoom = 1; st.panX = 0; st.panY = 0;
+  st.rotX = -0.45; st.rotY = 0.65;
+  clearMeasure(tabId);
+}
+
+function toggleMeasure(tabId) {
+  const st = openTabs[tabId];
+  st.measuring = !st.measuring;
+  st.pt1 = null; st.pt2 = null; st.selectedSeg = null;
+  document.getElementById(`btn-meas-${tabId}`).classList.toggle('active', st.measuring);
+  document.getElementById('meas-info-' + tabId).innerText = st.measuring
+    ? 'Measuring: hover and click a line, or two points'
+    : st.defaultDimText;
+  drawCadCanvas(tabId);
+}
+
+function clearMeasure(tabId) {
+  const st = openTabs[tabId];
+  if (!st) return;
+  st.pt1 = null; st.pt2 = null; st.selectedSeg = null;
+  st.hoverPt = null; st.hoverSeg = null; st.measureText = '';
+  const el = document.getElementById('meas-info-' + tabId);
+  if (el) el.innerText = st.defaultDimText || '';
+  drawCadCanvas(tabId);
+}
+
+function distToSegment2D(px, py, x1, y1, x2, y2) {
+  const l2 = (x2 - x1)*(x2 - x1) + (y2 - y1)*(y2 - y1);
+  if (l2 === 0) return Math.hypot(px - x1, py - y1);
+  let t = ((px - x1)*(x2 - x1) + (py - y1)*(y2 - y1)) / l2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (x1 + t*(x2 - x1)), py - (y1 + t*(y2 - y1)));
+}
+
+function setupCanvasInteractions(tabId) {
+  const canvas = document.getElementById('canvas-' + tabId);
+  if (!canvas) return;
+  const st = openTabs[tabId];
+  let dragging = false, lx = 0, ly = 0;
+
+  canvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    st.zoom *= (e.deltaY < 0 ? 1.15 : 0.87);
+    drawCadCanvas(tabId);
+  });
+
+  canvas.addEventListener('mousedown', e => {
+    if (st.measuring && e.button === 0) {
+      if (st.hoverPt) {
+        if (!st.pt1 || st.pt2) {
+          st.pt1 = st.hoverPt;
+          st.pt2 = null;
+          st.selectedSeg = null;
+          st.measureText = '';
+          document.getElementById('meas-info-' + tabId).innerText =
+            `P1 set (${st.pt1.wx.toFixed(1)}, ${st.pt1.wy.toFixed(1)}) — click the second point`;
+          drawCadCanvas(tabId);
+          return;
+        } else {
+          st.pt2 = st.hoverPt;
+          const dx = Math.abs(st.pt2.wx - st.pt1.wx);
+          const dy = Math.abs(st.pt2.wy - st.pt1.wy);
+          const dz = Math.abs((st.pt2.wz||0) - (st.pt1.wz||0));
+          const dist = Math.hypot(dx, dy, dz);
+          st.measureText = `${dist.toFixed(2)} mm`;
+          document.getElementById('meas-info-' + tabId).innerText =
+            `Distance: ${dist.toFixed(2)} mm (ΔX=${dx.toFixed(2)}, ΔY=${dy.toFixed(2)}${st.mode==='iges'?`, ΔZ=${dz.toFixed(2)}`:''})`;
+          drawCadCanvas(tabId);
+          return;
+        }
+      }
+      if (st.hoverSeg) {
+        st.selectedSeg = st.hoverSeg;
+        st.pt1 = {wx: st.hoverSeg.wx1, wy: st.hoverSeg.wy1, wz: st.hoverSeg.wz1};
+        st.pt2 = {wx: st.hoverSeg.wx2, wy: st.hoverSeg.wy2, wz: st.hoverSeg.wz2};
+        const dx = Math.abs(st.pt2.wx - st.pt1.wx);
+        const dy = Math.abs(st.pt2.wy - st.pt1.wy);
+        const dz = Math.abs(st.pt2.wz - st.pt1.wz);
+        const dist = Math.hypot(dx, dy, dz);
+        st.measureText = `${dist.toFixed(2)} mm`;
+        document.getElementById('meas-info-' + tabId).innerText =
+          `Line length: ${dist.toFixed(2)} mm (ΔX=${dx.toFixed(2)}, ΔY=${dy.toFixed(2)}${st.mode==='iges'?`, ΔZ=${dz.toFixed(2)}`:''})`;
+        drawCadCanvas(tabId);
+        return;
+      }
+    }
+    dragging = true; lx = e.clientX; ly = e.clientY;
+  });
+
+  canvas.addEventListener('mousemove', e => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+
+    if (st.measuring && !dragging && st.screenPts) {
+      let bestPt = null, bestPtD = 22;
+      for (const p of st.screenPts) {
+        const d = Math.hypot(p.sx - mx, p.sy - my);
+        if (d < bestPtD) { bestPtD = d; bestPt = p; }
+      }
+      let bestSeg = null, bestSegD = 12;
+      if (st.screenSegs) {
+        for (const s of st.screenSegs) {
+          const d = distToSegment2D(mx, my, s.sx1, s.sy1, s.sx2, s.sy2);
+          if (d < bestSegD) { bestSegD = d; bestSeg = s; }
+        }
+      }
+      st.hoverPt = bestPt;
+      st.hoverSeg = bestSeg;
+      st.mousePos = {x: mx, y: my};
+      drawCadCanvas(tabId);
+    }
+
+    if (!dragging) return;
+    const dx = e.clientX - lx, dy = e.clientY - ly;
+    lx = e.clientX; ly = e.clientY;
+    if (st.mode === 'iges' && e.buttons === 1 && !st.measuring) {
+      st.rotY += dx * 0.01;
+      st.rotX += dy * 0.01;
+    } else {
+      st.panX += dx;
+      st.panY += dy;
+    }
+    drawCadCanvas(tabId);
+  });
+
+  window.addEventListener('mouseup', () => dragging = false);
+}
+
+function watchStageResize(tabId) {
+  const st = openTabs[tabId];
+  const stage = document.getElementById('stage-' + tabId);
+  if (!st || !stage || st.stageObserver) return;
+  st.stageObserver = new ResizeObserver(() => {
+    if (st.resizeFrame) cancelAnimationFrame(st.resizeFrame);
+    st.resizeFrame = requestAnimationFrame(() => {
+      if (st.mode === 'dxf' || st.mode === 'iges') drawCadCanvas(tabId);
+    });
+  });
+  st.stageObserver.observe(stage);
+}
+
+function drawCadCanvas(tabId) {
+  const canvas = document.getElementById('canvas-' + tabId);
+  if (!canvas) return;
+  if (!canvas.clientWidth || !canvas.clientHeight) return; // hidden tab: redrawn when shown
+  const st = openTabs[tabId];
+  const d = st.cadData;
+  if (!d) return;
+  if (!d.segments) d.segments = [];
+  if (!d.faces) d.faces = [];
+  if (!d.segments.length && !d.faces.length) {
+    canvas.parentElement.innerHTML = `<div style="padding:30px; color:#9aa0b0;">Could not read the geometry of this ${st.mode.toUpperCase()} file.</div>`;
+    return;
+  }
+
+  canvas.width = canvas.clientWidth;
+  canvas.height = canvas.clientHeight;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#191926';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  st.screenPts = [];
+  st.screenSegs = [];
+
+  let projPoint = null;
+
+  if (st.mode === 'dxf') {
+    const scale = Math.min((canvas.width - 50) / (d.width || 1), (canvas.height - 50) / (d.height || 1)) * st.zoom;
+    const cx = (d.min_x + d.max_x) / 2, cy = (d.min_y + d.max_y) / 2;
+    const ox = canvas.width / 2 + st.panX, oy = canvas.height / 2 + st.panY;
+
+    projPoint = (wx, wy) => [ox + (wx - cx) * scale, oy - (wy - cy) * scale, 0];
+
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    for (const s of d.segments) {
+      const [sx1, sy1] = projPoint(s.x1, s.y1, 0);
+      const [sx2, sy2] = projPoint(s.x2, s.y2, 0);
+      ctx.moveTo(sx1, sy1);
+      ctx.lineTo(sx2, sy2);
+      st.screenPts.push({sx: sx1, sy: sy1, wx: s.x1, wy: s.y1, wz: 0});
+      st.screenPts.push({sx: sx2, sy: sy2, wx: s.x2, wy: s.y2, wz: 0});
+      st.screenSegs.push({sx1, sy1, sx2, sy2, wx1: s.x1, wy1: s.y1, wz1: 0, wx2: s.x2, wy2: s.y2, wz2: 0});
+    }
+    ctx.stroke();
+  } else {
+    const maxDim = Math.max(d.dx, d.dy, d.dz, 1);
+    const scale = (Math.min(canvas.width, canvas.height) * 0.72 / maxDim) * st.zoom;
+    const ox = canvas.width / 2 + st.panX, oy = canvas.height / 2 + st.panY;
+    const cosX = Math.cos(st.rotX), sinX = Math.sin(st.rotX);
+    const cosY = Math.cos(st.rotY), sinY = Math.sin(st.rotY);
+
+    projPoint = (x, y, z) => {
+      const x1 = x * cosY - z * sinY;
+      const z1 = x * sinY + z * cosY;
+      const y2 = y * cosX - z1 * sinX;
+      const z2 = y * sinX + z1 * cosX;
+      return [ox + x1 * scale, oy - y2 * scale, z2];
+    };
+
+    if (d.faces && d.faces.length > 0) {
+      const projectedFaces = [];
+      for (const f of d.faces) {
+        const p1 = projPoint(f.x1, f.y1, f.z1);
+        const p2 = projPoint(f.x2, f.y2, f.z2);
+        const p3 = projPoint(f.x3, f.y3, f.z3);
+        const ux = p2[0] - p1[0], uy = p2[1] - p1[1], uz = p2[2] - p1[2];
+        const vx = p3[0] - p1[0], vy = p3[1] - p1[1], vz = p3[2] - p1[2];
+        const nx = uy*vz - uz*vy, ny = uz*vx - ux*vz, nz = ux*vy - uy*vx;
+        const norm = Math.hypot(nx, ny, nz) || 1;
+        const shade = Math.abs(nz / norm);
+        projectedFaces.push({
+          p1, p2, p3,
+          zAvg: (p1[2] + p2[2] + p3[2]) / 3,
+          shade
+        });
+      }
+      projectedFaces.sort((a, b) => a.zAvg - b.zAvg);
+
+      for (const pf of projectedFaces) {
+        const r = Math.round(32 + pf.shade * 48);
+        const g = Math.round(78 + pf.shade * 82);
+        const b = Math.round(125 + pf.shade * 95);
+        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.88)`;
+        ctx.beginPath();
+        ctx.moveTo(pf.p1[0], pf.p1[1]);
+        ctx.lineTo(pf.p2[0], pf.p2[1]);
+        ctx.lineTo(pf.p3[0], pf.p3[1]);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+
+    ctx.strokeStyle = (d.faces && d.faces.length > 0) ? '#bae6fd' : '#38bdf8';
+    ctx.lineWidth = (d.faces && d.faces.length > 0) ? 1.15 : 1.4;
+    ctx.beginPath();
+    for (const s of d.segments) {
+      const [sx1, sy1] = projPoint(s.x1, s.y1, s.z1);
+      const [sx2, sy2] = projPoint(s.x2, s.y2, s.z2);
+      ctx.moveTo(sx1, sy1);
+      ctx.lineTo(sx2, sy2);
+      st.screenPts.push({sx: sx1, sy: sy1, wx: s.x1, wy: s.y1, wz: s.z1});
+      st.screenPts.push({sx: sx2, sy: sy2, wx: s.x2, wy: s.y2, wz: s.z2});
+      st.screenSegs.push({sx1, sy1, sx2, sy2, wx1: s.x1, wy1: s.y1, wz1: s.z1, wx2: s.x2, wy2: s.y2, wz2: s.z2});
+    }
+    ctx.stroke();
+  }
+
+  if (st.measuring && projPoint) {
+    if (st.hoverSeg) {
+      ctx.strokeStyle = '#1dd15b';
+      ctx.lineWidth = 3.2;
+      ctx.beginPath();
+      ctx.moveTo(st.hoverSeg.sx1, st.hoverSeg.sy1);
+      ctx.lineTo(st.hoverSeg.sx2, st.hoverSeg.sy2);
+      ctx.stroke();
+    }
+    if (st.hoverPt) {
+      ctx.strokeStyle = '#1dd15b';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(st.hoverPt.sx, st.hoverPt.sy, 7, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = '#1dd15b';
+      ctx.beginPath();
+      ctx.arc(st.hoverPt.sx, st.hoverPt.sy, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    if (st.pt1 && !st.pt2) {
+      const [p1x, p1y] = projPoint(st.pt1.wx, st.pt1.wy, st.pt1.wz || 0);
+      const tx = st.hoverPt ? st.hoverPt.sx : (st.mousePos ? st.mousePos.x : p1x);
+      const ty = st.hoverPt ? st.hoverPt.sy : (st.mousePos ? st.mousePos.y : p1y);
+
+      ctx.save();
+      ctx.strokeStyle = '#ffd166';
+      ctx.lineWidth = 1.8;
+      ctx.setLineDash([6, 4]);
+      ctx.beginPath();
+      ctx.moveTo(p1x, p1y);
+      ctx.lineTo(tx, ty);
+      ctx.stroke();
+      ctx.restore();
+
+      ctx.fillStyle = '#ff4757';
+      ctx.beginPath();
+      ctx.arc(p1x, p1y, 5.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  if (st.pt1 && st.pt2 && projPoint) {
+    const [p1x, p1y] = projPoint(st.pt1.wx, st.pt1.wy, st.pt1.wz || 0);
+    const [p2x, p2y] = projPoint(st.pt2.wx, st.pt2.wy, st.pt2.wz || 0);
+
+    ctx.strokeStyle = '#ffd166';
+    ctx.lineWidth = 3.0;
+    ctx.beginPath();
+    ctx.moveTo(p1x, p1y);
+    ctx.lineTo(p2x, p2y);
+    ctx.stroke();
+
+    for (const [px, py] of [[p1x, p1y], [p2x, p2y]]) {
+      ctx.fillStyle = '#ff4757';
+      ctx.beginPath();
+      ctx.arc(px, py, 5.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+
+    if (st.measureText) {
+      const mx = (p1x + p2x) / 2, my = (p1y + p2y) / 2;
+      ctx.font = 'bold 12px "Segoe UI", sans-serif';
+      const tw = ctx.measureText(st.measureText).width + 14;
+      ctx.fillStyle = 'rgba(217, 119, 6, 0.95)';
+      ctx.fillRect(mx - tw / 2, my - 22, tw, 20);
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(st.measureText, mx, my - 12);
+    }
+  }
+}
+
+// ---------- settings ----------
+function addFileTypeRow(ft) {
+  const tr = document.createElement('tr');
+  tr.innerHTML = `<td><input class="ft-name" value="${esc(ft.name)}" placeholder="PDF"></td>
+    <td><input class="ft-ext" value="${esc((ft.extensions || []).join(', '))}" placeholder=".pdf"></td>
+    <td><input class="ft-folders" value="${esc((ft.folders || []).join('; '))}" placeholder="\\\\server\\drawings"></td>
+    <td><select class="ft-match"><option value="exact" ${ft.match === 'exact' ? 'selected' : ''}>Exact</option><option value="prefix" ${ft.match !== 'exact' ? 'selected' : ''}>Prefix</option></select></td>
+    <td><button onclick="this.closest('tr').remove()" title="Remove">✕</button></td>`;
+  document.getElementById('ft-body').appendChild(tr);
+}
+
+function fillSettings(c) {
+  const v = (id, val) => document.getElementById(id).value = val || '';
+  v('s-bom-folder', c.bom_folder); v('s-bom-prefix', c.bom_prefix); v('s-sep', c.name_separator);
+  v('s-det-prefix', c.details_prefix); v('s-det-file', c.details_file);
+  v('s-c-item', c.columns.item); v('s-c-code', c.columns.code); v('s-c-desc', c.columns.description); v('s-c-qty', c.columns.qty);
+  v('s-hidden', (c.hidden_columns || []).join(', '));
+  document.getElementById('ft-body').innerHTML = '';
+  (c.file_types || []).forEach(addFileTypeRow);
+}
+
+async function openSettings() {
+  cfgCache = await (await fetch('/api/config')).json();
+  fillSettings(cfgCache);
+  document.getElementById('settings').style.display = 'flex';
+}
+
+async function restoreDefaults() {
+  const d = await (await fetch('/api/default_config')).json();
+  d.bom_folder = document.getElementById('s-bom-folder').value; // keep the folder
+  fillSettings(d);
+}
+
+async function saveSettings() {
+  const g = id => document.getElementById(id).value;
+  const split = (s, sep) => s.split(sep).map(x => x.trim()).filter(Boolean);
+  const c = Object.assign({}, cfgCache, {
+    bom_folder: g('s-bom-folder').trim(), bom_prefix: g('s-bom-prefix'), name_separator: g('s-sep'),
+    details_prefix: g('s-det-prefix'), details_file: g('s-det-file').trim(),
+    columns: { item: g('s-c-item'), code: g('s-c-code'), description: g('s-c-desc'), qty: g('s-c-qty') },
+    hidden_columns: split(g('s-hidden'), ','),
+    file_types: [...document.querySelectorAll('#ft-body tr')].map(tr => ({
+      name: tr.querySelector('.ft-name').value.trim(),
+      extensions: split(tr.querySelector('.ft-ext').value, ','),
+      folders: split(tr.querySelector('.ft-folders').value, ';'),
+      match: tr.querySelector('.ft-match').value
+    })).filter(f => f.name)
+  });
+  await fetch('/api/config', { method: 'POST', body: JSON.stringify(c) });
+  closeModal('settings');
+  pollStatus.msg = '';
+  document.getElementById('list-status').innerText = 'Reading the BOM folder…';
+  pollStatus.wasScanning = true;
+  setTimeout(pollStatus, 400);
+}
+
+// ---------- about ----------
+let repoUrl = '';
+async function openAbout() {
+  const v = await (await fetch('/api/version')).json();
+  repoUrl = v.repo;
+  document.getElementById('ab-ver').innerText = `v${v.version} (${v.date})`;
+  document.getElementById('ab-cfg').innerText = v.config_path;
+  document.getElementById('about').style.display = 'flex';
+}
+function openRepo(path) { fetch('/api/open_url?url=' + encodeURIComponent(repoUrl + path), { method: 'POST' }); }
+
+// ---------- start ----------
+window.addEventListener('pagehide', () => navigator.sendBeacon('/api/closing'));
+pollStatus().then(loadProducts);
+setInterval(pollStatus, 4000);
+</script>
+</body>
+</html>
