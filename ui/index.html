@@ -82,31 +82,31 @@
 </style>
 </head>
 <body>
-<div id="offline">⚠ BOM folder not reachable (network or VPN down?). The product list shows the last saved data.</div>
+<div id="offline" data-i18n="offline_bar"></div>
 
 <div class="menubar">
   <div class="brand"><img src="/assets/icon_256.png" alt="">EngTree Viewer</div>
-  <span class="menu-item" onclick="refreshList()">⟳ Refresh</span>
-  <span class="menu-item" onclick="openSettings()">⚙ Settings</span>
-  <span class="menu-item" onclick="openAbout()">ⓘ About</span>
+  <span class="menu-item" onclick="refreshList()">⟳ <span data-i18n="refresh"></span></span>
+  <span class="menu-item" onclick="openSettings()">⚙ <span data-i18n="settings"></span></span>
+  <span class="menu-item" onclick="openAbout()">ⓘ <span data-i18n="about"></span></span>
 </div>
 
 <div class="tabbar" id="tabbar">
-  <div class="tab active" id="tab-btn-home" onclick="activateTab('home')">Products</div>
+  <div class="tab active" id="tab-btn-home" onclick="activateTab('home')" data-i18n="products"></div>
 </div>
 
 <div id="workspace">
   <div class="pane active" id="pane-home">
     <div class="search-pane">
       <div class="row">
-        <input id="q" class="grow" placeholder="Search by code or description…" oninput="debounce(loadProducts, 200)()" autofocus>
+        <input id="q" class="grow" data-i18n-ph="search_ph" oninput="debounce(loadProducts, 200)()" autofocus>
       </div>
-      <div class="table-wrap" id="products-wrap">
+      <div class="table-wrap">
         <table id="products">
           <thead><tr>
-            <th class="sortable" onclick="sortBy('code')" id="h-code">Code</th>
-            <th class="sortable" onclick="sortBy('desc')" id="h-desc">Description</th>
-            <th class="sortable" onclick="sortBy('date')" id="h-date">BOM date</th>
+            <th class="sortable" onclick="sortBy('code')" id="h-code"></th>
+            <th class="sortable" onclick="sortBy('desc')" id="h-desc"></th>
+            <th class="sortable" onclick="sortBy('date')" id="h-date"></th>
           </tr></thead>
           <tbody></tbody>
         </table>
@@ -119,38 +119,44 @@
 <!-- Settings -->
 <div class="modal-bg" id="settings">
   <div class="modal">
-    <h2>Settings</h2>
-    <h3>BOM spreadsheets</h3>
+    <h2 data-i18n="settings"></h2>
+    <div class="field" style="max-width:260px"><label data-i18n="s_lang"></label>
+      <select id="s-lang" style="width:100%">
+        <option value="" data-i18n="s_lang_auto"></option>
+        <option value="en">English</option>
+        <option value="pt-BR">Português (Brasil)</option>
+      </select></div>
+    <h3 data-i18n="s_bom_h"></h3>
     <div class="grid2">
-      <div class="field" style="grid-column: span 2"><label>BOM folder</label><input id="s-bom-folder" placeholder="e.g. \\server\engineering\BOM or C:\Projects\BOM">
-        <div class="hint">Each spreadsheet (.xlsx, .csv, .txt) in this folder is one product. Code and description come from the file name.</div></div>
-      <div class="field"><label>BOM file prefix</label><input id="s-bom-prefix" placeholder="(empty = every spreadsheet)">
-        <div class="hint">e.g. "BOM - " for "BOM - ABC-100 - Side table.xlsx"</div></div>
-      <div class="field"><label>Separator between code and description</label><input id="s-sep" placeholder=" - "></div>
-      <div class="field"><label>Details file prefix (optional)</label><input id="s-det-prefix" placeholder="e.g. PARTS - ">
-        <div class="hint">One details spreadsheet per product, in the BOM folder, joined by part code.</div></div>
-      <div class="field"><label>Or one shared details file (optional)</label><input id="s-det-file" placeholder="full path to .xlsx/.csv"></div>
+      <div class="field" style="grid-column: span 2"><label data-i18n="s_bom_folder"></label><input id="s-bom-folder" data-i18n-ph="s_bom_folder_ph">
+        <div class="hint" data-i18n="s_bom_folder_hint"></div></div>
+      <div class="field"><label data-i18n="s_bom_prefix"></label><input id="s-bom-prefix" data-i18n-ph="s_bom_prefix_ph">
+        <div class="hint" data-i18n="s_bom_prefix_hint"></div></div>
+      <div class="field"><label data-i18n="s_sep"></label><input id="s-sep" placeholder=" - "></div>
+      <div class="field"><label data-i18n="s_det_prefix"></label><input id="s-det-prefix" data-i18n-ph="s_det_prefix_ph">
+        <div class="hint" data-i18n="s_det_prefix_hint"></div></div>
+      <div class="field"><label data-i18n="s_det_file"></label><input id="s-det-file" data-i18n-ph="s_det_file_ph"></div>
     </div>
-    <h3>Column names</h3>
-    <div class="muted" style="margin-bottom:6px">Alternatives separated by |. Case, accents and punctuation are ignored. All other columns are shown as they are.</div>
+    <h3 data-i18n="s_cols_h"></h3>
+    <div class="muted" style="margin-bottom:6px" data-i18n="s_cols_hint"></div>
     <div class="grid2">
-      <div class="field"><label>Item number (hierarchy 1, 1.1, 1.1.1)</label><input id="s-c-item"></div>
-      <div class="field"><label>Part code</label><input id="s-c-code"></div>
-      <div class="field"><label>Description</label><input id="s-c-desc"></div>
-      <div class="field"><label>Quantity</label><input id="s-c-qty"></div>
-      <div class="field" style="grid-column: span 2"><label>Hide these columns</label><input id="s-hidden" placeholder="comma separated, e.g. Mass, Configuration"></div>
+      <div class="field"><label data-i18n="s_c_item"></label><input id="s-c-item"></div>
+      <div class="field"><label data-i18n="s_c_code"></label><input id="s-c-code"></div>
+      <div class="field"><label data-i18n="s_c_desc"></label><input id="s-c-desc"></div>
+      <div class="field"><label data-i18n="s_c_qty"></label><input id="s-c-qty"></div>
+      <div class="field" style="grid-column: span 2"><label data-i18n="s_hidden"></label><input id="s-hidden" data-i18n-ph="s_hidden_ph"></div>
     </div>
-    <h3>File types</h3>
-    <div class="muted" style="margin-bottom:6px">Several types may share one folder: files are told apart by extension. Separate several folders with ";". "Prefix" also finds "ABC-100 - Side.pdf" and "ABC-100_rev2.pdf" for code ABC-100 (but never "ABC-1000").</div>
+    <h3 data-i18n="s_ft_h"></h3>
+    <div class="muted" style="margin-bottom:6px" data-i18n="s_ft_hint"></div>
     <table class="ft-table">
-      <thead><tr><th style="width:14%">Name</th><th style="width:16%">Extensions</th><th>Folders</th><th style="width:11%">Match</th><th style="width:4%"></th></tr></thead>
+      <thead><tr><th style="width:14%" data-i18n="ft_name"></th><th style="width:16%" data-i18n="ft_ext"></th><th data-i18n="ft_folders"></th><th style="width:12%" data-i18n="ft_match"></th><th style="width:4%"></th></tr></thead>
       <tbody id="ft-body"></tbody>
     </table>
-    <button onclick="addFileTypeRow({name:'',extensions:[],folders:[],match:'exact'})">+ Add file type</button>
+    <button onclick="addFileTypeRow({name:'',extensions:[],folders:[],match:'exact'})" data-i18n="ft_add"></button>
     <div class="modal-actions">
-      <button onclick="restoreDefaults()" style="margin-right:auto">Restore defaults</button>
-      <button onclick="closeModal('settings')">Cancel</button>
-      <button class="primary" onclick="saveSettings()">Save</button>
+      <button onclick="restoreDefaults()" style="margin-right:auto" data-i18n="restore"></button>
+      <button onclick="closeModal('settings')" data-i18n="cancel"></button>
+      <button class="primary" id="btn-save" onclick="saveSettings()" data-i18n="save"></button>
     </div>
   </div>
 </div>
@@ -159,49 +165,180 @@
 <div class="modal-bg" id="about">
   <div class="modal" style="width:520px">
     <h2>EngTree Viewer <span id="ab-ver" class="muted"></span></h2>
-    <p>Browse BOMs as a tree and open each part's drawings, DXF and 3D files in one place.</p>
-    <p class="muted">Free and open source (MIT). Created by Alexsander Kakiuchi.</p>
-    <p><b>Privacy:</b> EngTree only reads the folders you configure. It sends nothing over the internet and collects no data.</p>
-    <p class="muted">Settings file: <span id="ab-cfg"></span></p>
-    <p><a onclick="openRepo('')">Project page</a> · <a onclick="openRepo('/issues/new')">Report a problem or suggest an improvement</a></p>
-    <div class="modal-actions"><button onclick="closeModal('about')">Close</button></div>
+    <p data-i18n="ab_desc"></p>
+    <p class="muted" data-i18n="ab_free"></p>
+    <p><b data-i18n="ab_privacy_h"></b> <span data-i18n="ab_privacy"></span></p>
+    <p class="muted"><span data-i18n="ab_cfg"></span> <span id="ab-cfg"></span></p>
+    <p><a onclick="openRepo('')" data-i18n="ab_page"></a> · <a onclick="openRepo('/issues/new')" data-i18n="ab_report"></a></p>
+    <div class="modal-actions"><button onclick="closeModal('about')" data-i18n="close"></button></div>
   </div>
 </div>
 
 <script>
+// ---------- languages ----------
+const I18N = {
+  en: {
+    offline_bar: '⚠ BOM folder not reachable (network or VPN down?). The product list shows the last saved data.',
+    products: 'Products', refresh: 'Refresh', settings: 'Settings', about: 'About',
+    search_ph: 'Search by code or description…',
+    col_code: 'Code', col_desc: 'Description', col_date: 'BOM date', col_item: 'Item', col_qty: 'Qty', col_files: 'Files',
+    welcome: 'Welcome! Start by telling EngTree where your BOM spreadsheets and drawings are.',
+    open_settings: 'Open settings',
+    reading: 'Reading the BOM folder…',
+    no_match: 'No product matches this search.',
+    no_boms: 'No BOM spreadsheets found. Check the BOM folder and file prefix in Settings.',
+    n_products: '{0} product(s) — double-click to open',
+    not_found: 'Product not found. Try Refresh.',
+    tree_offline: 'BOM folder not reachable: the tree and files cannot be loaded right now.',
+    filter_ph: 'Filter this BOM…', expand_all: 'Expand all', collapse_all: 'Collapse all',
+    n_lines: '{0} BOM line(s) · ↑ ↓ to move',
+    warn_bom_unreadable: 'Could not read the BOM file (empty, open in another program, or old .xls format).',
+    warn_no_code_column: 'No part code column found. Check the column names in Settings.',
+    warn_no_item_column: 'No item number column found: the BOM is shown as a flat list.',
+    warn_details_no_code: 'The details spreadsheet has no part code column; it was ignored.',
+    no_files: 'No files found for {0}.', no_code: '(no code)',
+    no_files_hint: 'Check the file type folders in Settings, or whether the file name matches the part code.',
+    no_viewer: 'EngTree has no built-in viewer for {0} files.',
+    open_default: 'Open with the default program',
+    open: 'Open', show_folder: 'Show in folder', download: 'Download',
+    zip_all: 'ZIP all {0}', zip_title: 'All {0} files of this product in one ZIP',
+    zip_none: 'No {0} files found for this product.', zip_offline: 'BOM folder not reachable. Try again when the network is back.',
+    fit: 'Fit', measure: 'Measure',
+    meas_on: 'Measuring: hover and click a line, or two points',
+    meas_p1: 'P1 set ({0}, {1}) — click the second point',
+    meas_dist: 'Distance:', meas_line: 'Line length:',
+    cad_fail: 'Could not read the geometry of this {0} file.',
+    s_lang: 'Language', s_lang_auto: 'Same as the system',
+    s_bom_h: 'BOM spreadsheets', s_bom_folder: 'BOM folder',
+    s_bom_folder_ph: 'e.g. \\\\server\\engineering\\BOM or C:\\Projects\\BOM',
+    s_bom_folder_hint: 'Each spreadsheet (.xlsx, .csv, .txt) in this folder is one product. Code and description come from the file name.',
+    s_bom_prefix: 'BOM file prefix', s_bom_prefix_ph: '(empty = every spreadsheet)',
+    s_bom_prefix_hint: 'e.g. "BOM - " for "BOM - ABC-100 - Side table.xlsx"',
+    s_sep: 'Separator between code and description',
+    s_det_prefix: 'Details file prefix (optional)', s_det_prefix_ph: 'e.g. PARTS - ',
+    s_det_prefix_hint: 'One details spreadsheet per product, in the BOM folder, joined by part code.',
+    s_det_file: 'Or one shared details file (optional)', s_det_file_ph: 'full path to .xlsx/.csv',
+    s_cols_h: 'Column names',
+    s_cols_hint: 'Alternatives separated by |. Case, accents and punctuation are ignored. All other columns are shown as they are.',
+    s_c_item: 'Item number (hierarchy 1, 1.1, 1.1.1)', s_c_code: 'Part code', s_c_desc: 'Description', s_c_qty: 'Quantity',
+    s_hidden: 'Hide these columns', s_hidden_ph: 'comma separated, e.g. Mass, Configuration',
+    s_ft_h: 'File types',
+    s_ft_hint: 'Several types may share one folder: files are told apart by extension. Separate several folders with ";". "Prefix" also finds "ABC-100 - Side.pdf" and "ABC-100_rev2.pdf" for code ABC-100 (but never "ABC-1000").',
+    ft_name: 'Name', ft_ext: 'Extensions', ft_folders: 'Folders', ft_match: 'Match', ft_exact: 'Exact', ft_prefix: 'Prefix',
+    ft_add: '+ Add file type', ft_remove: 'Remove',
+    restore: 'Restore defaults', cancel: 'Cancel', save: 'Save', close: 'Close',
+    ab_desc: "Browse BOMs as a tree and open each part's drawings, DXF and 3D files in one place.",
+    ab_free: 'Free and open source (MIT). Created by Alexsander Kakiuchi.',
+    ab_privacy_h: 'Privacy:', ab_privacy: 'EngTree only reads the folders you configure. It sends nothing over the internet and collects no data.',
+    ab_cfg: 'Settings file:', ab_page: 'Project page', ab_report: 'Report a problem or suggest an improvement'
+  },
+  'pt-BR': {
+    offline_bar: '⚠ Pasta de BOM inacessível (rede ou VPN caiu?). A lista de produtos mostra os últimos dados salvos.',
+    products: 'Produtos', refresh: 'Atualizar', settings: 'Configurações', about: 'Sobre',
+    search_ph: 'Buscar por código ou descrição…',
+    col_code: 'Código', col_desc: 'Descrição', col_date: 'Data da BOM', col_item: 'Item', col_qty: 'Qtd', col_files: 'Arquivos',
+    welcome: 'Bem-vindo! Comece informando onde ficam suas planilhas de BOM e seus desenhos.',
+    open_settings: 'Abrir configurações',
+    reading: 'Lendo a pasta de BOM…',
+    no_match: 'Nenhum produto encontrado para esta busca.',
+    no_boms: 'Nenhuma planilha de BOM encontrada. Confira a pasta de BOM e o prefixo dos arquivos nas Configurações.',
+    n_products: '{0} produto(s) — duplo clique para abrir',
+    not_found: 'Produto não encontrado. Tente Atualizar.',
+    tree_offline: 'Pasta de BOM inacessível: a árvore e os arquivos não podem ser carregados agora.',
+    filter_ph: 'Filtrar esta BOM…', expand_all: 'Expandir tudo', collapse_all: 'Recolher tudo',
+    n_lines: '{0} linha(s) da BOM · ↑ ↓ para navegar',
+    warn_bom_unreadable: 'Não foi possível ler a BOM (vazia, aberta em outro programa ou no formato antigo .xls).',
+    warn_no_code_column: 'Coluna de código da peça não encontrada. Confira os nomes das colunas nas Configurações.',
+    warn_no_item_column: 'Coluna de número do item não encontrada: a BOM aparece como lista simples.',
+    warn_details_no_code: 'A planilha de detalhes não tem coluna de código da peça e foi ignorada.',
+    no_files: 'Nenhum arquivo encontrado para {0}.', no_code: '(sem código)',
+    no_files_hint: 'Confira as pastas dos tipos de arquivo nas Configurações, ou se o nome do arquivo bate com o código da peça.',
+    no_viewer: 'O EngTree não tem visualizador próprio para arquivos {0}.',
+    open_default: 'Abrir no programa padrão',
+    open: 'Abrir', show_folder: 'Mostrar na pasta', download: 'Baixar',
+    zip_all: 'ZIP de todos os {0}', zip_title: 'Todos os arquivos {0} deste produto em um ZIP',
+    zip_none: 'Nenhum arquivo {0} encontrado para este produto.', zip_offline: 'Pasta de BOM inacessível. Tente de novo quando a rede voltar.',
+    fit: 'Ajustar', measure: 'Medir',
+    meas_on: 'Medição ativa: passe o mouse e clique numa linha ou em 2 pontos',
+    meas_p1: 'P1 selecionado ({0}, {1}) — clique no 2º ponto',
+    meas_dist: 'Medida:', meas_line: 'Comprimento da linha:',
+    cad_fail: 'Não foi possível ler a geometria deste arquivo {0}.',
+    s_lang: 'Idioma', s_lang_auto: 'O mesmo do sistema',
+    s_bom_h: 'Planilhas de BOM', s_bom_folder: 'Pasta das BOMs',
+    s_bom_folder_ph: 'ex.: \\\\servidor\\engenharia\\BOM ou C:\\Projetos\\BOM',
+    s_bom_folder_hint: 'Cada planilha (.xlsx, .csv, .txt) desta pasta é um produto. Código e descrição vêm do nome do arquivo.',
+    s_bom_prefix: 'Prefixo dos arquivos de BOM', s_bom_prefix_ph: '(vazio = todas as planilhas)',
+    s_bom_prefix_hint: 'ex.: "BOM - " para "BOM - ABC-100 - Mesa lateral.xlsx"',
+    s_sep: 'Separador entre código e descrição',
+    s_det_prefix: 'Prefixo da planilha de detalhes (opcional)', s_det_prefix_ph: 'ex.: PECAS - ',
+    s_det_prefix_hint: 'Uma planilha de detalhes por produto, na pasta das BOMs, ligada pelo código da peça.',
+    s_det_file: 'Ou um arquivo único de detalhes (opcional)', s_det_file_ph: 'caminho completo do .xlsx/.csv',
+    s_cols_h: 'Nomes das colunas',
+    s_cols_hint: 'Alternativas separadas por |. Maiúsculas, acentos e pontuação são ignorados. As demais colunas aparecem como estão.',
+    s_c_item: 'Número do item (hierarquia 1, 1.1, 1.1.1)', s_c_code: 'Código da peça', s_c_desc: 'Descrição', s_c_qty: 'Quantidade',
+    s_hidden: 'Esconder estas colunas', s_hidden_ph: 'separadas por vírgula, ex.: Massa, Configuração',
+    s_ft_h: 'Tipos de arquivo',
+    s_ft_hint: 'Vários tipos podem usar a mesma pasta: os arquivos são separados pela extensão. Separe várias pastas com ";". "Prefixo" também encontra "ABC-100 - Lateral.pdf" e "ABC-100_rev2.pdf" para o código ABC-100 (mas nunca "ABC-1000").',
+    ft_name: 'Nome', ft_ext: 'Extensões', ft_folders: 'Pastas', ft_match: 'Nome do arquivo', ft_exact: 'Exato', ft_prefix: 'Prefixo',
+    ft_add: '+ Adicionar tipo de arquivo', ft_remove: 'Remover',
+    restore: 'Restaurar padrões', cancel: 'Cancelar', save: 'Salvar', close: 'Fechar',
+    ab_desc: 'Navegue pelas BOMs em árvore e abra os desenhos, DXF e arquivos 3D de cada peça em um só lugar.',
+    ab_free: 'Gratuito e de código aberto (MIT). Criado por Alexsander Kakiuchi.',
+    ab_privacy_h: 'Privacidade:', ab_privacy: 'O EngTree só lê as pastas que você configurar. Não envia nada pela internet e não coleta dados.',
+    ab_cfg: 'Arquivo de configurações:', ab_page: 'Página do projeto', ab_report: 'Reportar um problema ou sugerir uma melhoria'
+  }
+};
+let lang = 'en';
+function t(key, ...args) {
+  const s = (I18N[lang] && I18N[lang][key]) || I18N.en[key] || key;
+  return s.replace(/\{(\d)\}/g, (_, i) => args[i] ?? '');
+}
+function pickLang(setting) {
+  if (I18N[setting]) return setting;
+  return (navigator.language || 'en').toLowerCase().startsWith('pt') ? 'pt-BR' : 'en';
+}
+function applyI18n(root) {
+  root.querySelectorAll('[data-i18n]').forEach(e => e.textContent = t(e.dataset.i18n));
+  root.querySelectorAll('[data-i18n-ph]').forEach(e => e.placeholder = t(e.dataset.i18nPh));
+  root.querySelectorAll('[data-i18n-title]').forEach(e => e.title = t(e.dataset.i18nTitle));
+}
+
 const openTabs = {};
-let sortCol = 'code', sortAsc = true, lastOnline = true, cfgCache = null;
+const tabOfCode = {};
+let tabSeq = 0;
+let sortCol = 'code', sortAsc = true, lastOnline = true, cfgCache = null, configured = true;
 
 // ---------- helpers ----------
-function esc(t) { return String(t ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function esc(v) { return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function debounce(fn, ms) { return () => { clearTimeout(fn._t); fn._t = setTimeout(fn, ms); }; }
-function fmtDate(s) { if (!s) return ''; const d = new Date(s * 1000); return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
+function fmtDate(s) { if (!s) return ''; const d = new Date(s * 1000); return d.toLocaleDateString(lang) + ' ' + d.toLocaleTimeString(lang, {hour:'2-digit', minute:'2-digit'}); }
 function fmtSize(n) { return n > 1048576 ? (n/1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n/1024)) + ' KB'; }
 function fileUrl(p, dl) { return '/api/file?path=' + encodeURIComponent(p) + (dl ? '&download=1' : ''); }
 function closeModal(id) { document.getElementById(id).style.display = 'none'; }
-function tabKey(code) { return 'p_' + code.replace(/[^A-Za-z0-9_-]/g, '_'); }
+function setListStatus(text) { document.getElementById('list-status').innerText = text; }
 
 // ---------- status / list ----------
 async function pollStatus() {
   try {
-    const r = await fetch('/api/status');
-    const s = await r.json();
+    const s = await (await fetch('/api/status')).json();
+    configured = s.configured;
     document.getElementById('offline').style.display = (s.configured && !s.online) ? 'block' : 'none';
     if (!s.configured) {
-      showEmptyList(`Welcome! Start by telling EngTree where your BOM spreadsheets and drawings are.<br><br><button class="primary" onclick="openSettings()">Open settings</button>`);
+      if (!document.getElementById('welcome')) {
+        showEmptyList(`<span id="welcome">${esc(t('welcome'))}</span><br><br><button class="primary" onclick="openSettings()">${esc(t('open_settings'))}</button>`);
+        setListStatus('');
+      }
     } else {
-      if (!lastOnline && s.online) loadProducts();
-      if (s.scanning) document.getElementById('list-status').innerText = 'Reading the BOM folder…';
-      else if (pollStatus.wasScanning) loadProducts();
+      if (s.scanning) setListStatus(t('reading'));
+      else if (pollStatus.wasScanning || (!lastOnline && s.online)) loadProducts();
     }
     pollStatus.wasScanning = s.scanning;
     lastOnline = s.online;
-    pollStatus.msg = s.message;
   } catch (e) {}
 }
 
 function showEmptyList(html) {
-  document.querySelector('#products tbody').innerHTML = `<tr><td colspan="3" class="empty" style="white-space:normal">${html}</td></tr>`;
+  document.querySelector('#products tbody').innerHTML = `<tr class="msg"><td colspan="3" class="empty" style="white-space:normal">${html}</td></tr>`;
 }
 
 function sortBy(col) {
@@ -210,35 +347,50 @@ function sortBy(col) {
 }
 
 async function loadProducts() {
+  [['code','col_code'],['desc','col_desc'],['date','col_date']].forEach(([c, k]) => {
+    document.getElementById('h-' + c).innerText = t(k) + (c === sortCol ? (sortAsc ? ' ▲' : ' ▼') : '');
+  });
+  if (!configured) return;
   const q = document.getElementById('q').value;
+  const seq = loadProducts.seq = (loadProducts.seq || 0) + 1;
   const r = await fetch(`/api/products?q=${encodeURIComponent(q)}&sort=${sortCol}&asc=${sortAsc ? 1 : 0}`);
   const list = await r.json();
-  ['code','desc','date'].forEach(c => {
-    const h = document.getElementById('h-' + c);
-    h.innerText = h.innerText.replace(/ [▲▼]$/, '') + (c === sortCol ? (sortAsc ? ' ▲' : ' ▼') : '');
-  });
-  const tb = document.querySelector('#products tbody');
+  if (seq !== loadProducts.seq) return; // a newer search is already on its way
   if (!list.length) {
-    if (pollStatus.msg === 'not_configured') return;
-    showEmptyList(q ? 'No product matches this search.' : 'No BOM spreadsheets found. Check the BOM folder and file prefix in Settings.');
+    showEmptyList(esc(q ? t('no_match') : t('no_boms')));
   } else {
-    tb.innerHTML = list.map(p => `<tr ondblclick="openProduct('${esc(p.code)}')" onclick="selRow(this)">
-      <td>${esc(p.code)}</td><td>${esc(p.description)}</td><td>${fmtDate(p.mtime)}</td></tr>`).join('');
+    document.querySelector('#products tbody').innerHTML = list.map(p =>
+      `<tr data-code="${esc(p.code)}"><td>${esc(p.code)}</td><td>${esc(p.description)}</td><td>${fmtDate(p.mtime)}</td></tr>`).join('');
   }
-  document.getElementById('list-status').innerText = `${list.length} product(s) — double-click to open`;
+  setListStatus(t('n_products', list.length));
 }
 
-function selRow(tr) { tr.parentElement.querySelectorAll('tr.sel').forEach(x => x.classList.remove('sel')); tr.classList.add('sel'); }
+document.querySelector('#products tbody').addEventListener('click', e => {
+  const tr = e.target.closest('tr[data-code]');
+  if (!tr) return;
+  tr.parentElement.querySelectorAll('tr.sel').forEach(x => x.classList.remove('sel'));
+  tr.classList.add('sel');
+});
+document.querySelector('#products tbody').addEventListener('dblclick', e => {
+  const tr = e.target.closest('tr[data-code]');
+  if (tr) openProduct(tr.dataset.code);
+});
+document.getElementById('q').addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  const rows = document.querySelectorAll('#products tbody tr[data-code]');
+  if (rows.length === 1) openProduct(rows[0].dataset.code);
+});
 
 async function refreshList() {
   await fetch('/api/refresh');
-  document.getElementById('list-status').innerText = 'Reading the BOM folder…';
+  if (configured) setListStatus(t('reading'));
+  pollStatus.wasScanning = true;
   setTimeout(pollStatus, 300);
 }
 
 // ---------- tabs ----------
 function activateTab(id) {
-  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.id === 'tab-btn-' + id));
+  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x.id === 'tab-btn-' + id));
   document.querySelectorAll('.pane').forEach(p => p.classList.toggle('active', p.id === 'pane-' + id));
 }
 
@@ -246,6 +398,7 @@ function closeTab(id, ev) {
   ev.stopPropagation();
   const st = openTabs[id];
   if (st && st.stageObserver) st.stageObserver.disconnect();
+  if (st) delete tabOfCode[st.product.code.toUpperCase()];
   delete openTabs[id];
   document.getElementById('tab-btn-' + id).remove();
   document.getElementById('pane-' + id).remove();
@@ -253,11 +406,14 @@ function closeTab(id, ev) {
 }
 
 async function openProduct(code) {
-  const id = tabKey(code);
-  if (openTabs[id]) { activateTab(id); return; }
+  const known = tabOfCode[code.toUpperCase()];
+  if (known) { activateTab(known); return; }
   const r = await fetch('/api/product?code=' + encodeURIComponent(code));
-  if (!r.ok) { alert('Product not found. Try Refresh.'); return; }
+  if (!r.ok) { alert(t('not_found')); return; }
   const d = await r.json();
+  if (tabOfCode[code.toUpperCase()]) { activateTab(tabOfCode[code.toUpperCase()]); return; } // double double-click
+  const id = 't' + (++tabSeq);
+  tabOfCode[code.toUpperCase()] = id;
 
   // Flatten the tree, with the product itself as the top row.
   const rows = [];
@@ -271,31 +427,31 @@ async function openProduct(code) {
   })([root], 0, '');
 
   openTabs[id] = {
-    product: d.product, columns: d.bom.columns, rows, fileTypes: d.file_types,
-    collapsed: {}, sel: 0, mode: null, typeName: null, files: [], fileIdx: 0,
+    product: d.product, columns: d.bom.columns, rows,
+    collapsed: {}, sel: 0, mode: null, typeName: null, typeFiles: [], fileIdx: 0,
     zoom: 1, panX: 0, panY: 0, rotX: -0.45, rotY: 0.65, measuring: false
   };
 
   const tab = document.createElement('div');
   tab.className = 'tab'; tab.id = 'tab-btn-' + id;
-  tab.innerHTML = `${esc(code)} <span class="x" onclick="closeTab('${id}', event)">✕</span>`;
+  tab.innerHTML = `${esc(d.product.code)} <span class="x" onclick="closeTab('${id}', event)">✕</span>`;
   tab.onclick = () => activateTab(id);
   document.getElementById('tabbar').appendChild(tab);
 
   const pane = document.createElement('div');
   pane.className = 'pane'; pane.id = 'pane-' + id;
-  const warn = [...d.bom.warnings, ...(d.online ? [] : ['BOM folder not reachable: the tree and files cannot be loaded right now.'])];
+  const warn = [...d.bom.warnings.map(w => t('warn_' + w)), ...(d.online ? [] : [t('tree_offline')])];
   pane.innerHTML = `
     <div class="split">
       <div class="left" id="left-${id}">
         <div class="row">
-          <input class="grow" placeholder="Filter this BOM…" oninput="filterTree('${id}', this.value)">
-          <button onclick="expandAll('${id}', true)" title="Expand all">⊞</button>
-          <button onclick="expandAll('${id}', false)" title="Collapse all">⊟</button>
+          <input class="grow" data-i18n-ph="filter_ph" oninput="filterTree('${id}', this.value)">
+          <button onclick="expandAll('${id}', true)" data-i18n-title="expand_all">⊞</button>
+          <button onclick="expandAll('${id}', false)" data-i18n-title="collapse_all">⊟</button>
         </div>
         ${warn.map(w => `<div class="warn">${esc(w)}</div>`).join('')}
         <div class="table-wrap" id="tree-${id}"></div>
-        <div class="muted">${rows.length - 1} BOM line(s) · ↑ ↓ to move</div>
+        <div class="muted">${esc(t('n_lines', rows.length - 1))}</div>
       </div>
       <div class="divider" onmousedown="startResize(event, '${id}')"></div>
       <div class="right">
@@ -304,7 +460,12 @@ async function openProduct(code) {
         <div class="stage" id="stage-${id}"></div>
       </div>
     </div>`;
+  applyI18n(pane);
   document.getElementById('workspace').appendChild(pane);
+  document.getElementById('types-' + id).addEventListener('click', e => {
+    const b = e.target.closest('button[data-type]');
+    if (b && !b.disabled) pickType(id, b.dataset.type);
+  });
   activateTab(id);
   renderTree(id);
   selectRow(id, 0);
@@ -323,7 +484,7 @@ function isHidden(st, row) {
 function renderTree(id) {
   const st = openTabs[id];
   const extra = st.columns.map(c => `<th>${esc(c)}</th>`).join('');
-  let html = `<table><thead><tr><th>Item</th><th>Code</th><th>Description</th><th>Qty</th><th>Files</th>${extra}</tr></thead><tbody>`;
+  let html = `<table><thead><tr><th>${esc(t('col_item'))}</th><th>${esc(t('col_code'))}</th><th>${esc(t('col_desc'))}</th><th>${esc(t('col_qty'))}</th><th>${esc(t('col_files'))}</th>${extra}</tr></thead><tbody>`;
   const f = (st.filter || '').toLowerCase();
   st.rows.forEach((r, i) => {
     if (isHidden(st, r)) return;
@@ -334,7 +495,7 @@ function renderTree(id) {
     html += `<tr class="${cls}" id="row-${id}-${i}" onclick="selectRow('${id}', ${i})">
       <td style="padding-left:${6 + r.depth * 16}px">${tog}${esc(n.item)}</td>
       <td>${esc(n.code)}</td><td>${esc(n.desc)}</td><td>${esc(n.qty)}</td>
-      <td>${(n.files || []).map(t => `<span class="badge">${esc(t)}</span>`).join('')}</td>
+      <td>${(n.files || []).map(x => `<span class="badge">${esc(x)}</span>`).join('')}</td>
       ${st.columns.map((_, k) => `<td>${esc((n.values || [])[k])}</td>`).join('')}</tr>`;
   });
   document.getElementById('tree-' + id).innerHTML = html + '</tbody></table>';
@@ -344,6 +505,8 @@ function toggleNode(id, key, ev) {
   ev.stopPropagation();
   const st = openTabs[id];
   st.collapsed[key] = !st.collapsed[key];
+  // If the selected row just got hidden, select the row that was collapsed.
+  if (isHidden(st, st.rows[st.sel])) { renderTree(id); selectRow(id, st.rows.findIndex(r => r.key === key)); return; }
   renderTree(id);
 }
 
@@ -351,6 +514,7 @@ function expandAll(id, open) {
   const st = openTabs[id];
   st.collapsed = {};
   if (!open) st.rows.forEach(r => { if (r.hasKids && r.depth > 0) st.collapsed[r.key] = true; });
+  if (isHidden(st, st.rows[st.sel])) { renderTree(id); selectRow(id, 0); return; }
   renderTree(id);
 }
 
@@ -363,19 +527,24 @@ function filterTree(id, text) {
 
 async function selectRow(id, idx) {
   const st = openTabs[id];
+  if (!st || idx < 0) return;
   st.sel = idx;
-  document.querySelectorAll(`#tree-${id} tr.sel`).forEach(t => t.classList.remove('sel'));
+  document.querySelectorAll(`#tree-${id} tr.sel`).forEach(x => x.classList.remove('sel'));
   const tr = document.getElementById(`row-${id}-${idx}`);
   if (tr) { tr.classList.add('sel'); tr.scrollIntoView({ block: 'nearest' }); }
 
   const code = st.rows[idx].node.code;
-  const r = await fetch('/api/item_files?code=' + encodeURIComponent(code));
-  if (st.sel !== idx) return; // user already moved on
-  st.typeFiles = await r.json();
+  let files = [];
+  try {
+    const r = await fetch(`/api/item_files?code=${encodeURIComponent(code)}&product=${encodeURIComponent(st.product.code)}`);
+    files = await r.json();
+  } catch (e) {}
+  if (openTabs[id] !== st || st.sel !== idx) return; // tab closed or user already moved on
+  st.typeFiles = files;
   // Keep the same file type while moving through the tree, if this part has it.
-  let t = st.typeFiles.find(x => x.type === st.typeName && x.files.length);
-  if (!t) t = st.typeFiles.find(x => x.files.length);
-  st.typeName = t ? t.type : null;
+  let cur = st.typeFiles.find(x => x.type === st.typeName && x.files.length);
+  if (!cur) cur = st.typeFiles.find(x => x.files.length);
+  if (cur) st.typeName = cur.type;
   st.fileIdx = 0;
   renderTypes(id);
   showFile(id);
@@ -384,9 +553,10 @@ async function selectRow(id, idx) {
 function renderTypes(id) {
   const st = openTabs[id];
   const n = st.rows[st.sel].node;
+  const cur = currentFile(st);
   let html = `<span class="title" title="${esc(n.code + ' ' + n.desc)}">${esc(n.code)} ${esc(n.desc)}</span>`;
-  html += st.typeFiles.map(t => `<button class="${t.type === st.typeName ? 'active' : ''}" ${t.files.length ? '' : 'disabled'}
-      onclick="pickType('${id}', '${esc(t.type)}')">${esc(t.type)}${t.files.length > 1 ? ' (' + t.files.length + ')' : ''}</button>`).join('');
+  html += st.typeFiles.map(x => `<button class="${cur && x.type === st.typeName ? 'active' : ''}" ${x.files.length ? '' : 'disabled'}
+      data-type="${esc(x.type)}">${esc(x.type)}${x.files.length > 1 ? ' (' + x.files.length + ')' : ''}</button>`).join('');
   document.getElementById('types-' + id).innerHTML = html;
 }
 
@@ -398,8 +568,8 @@ function pickType(id, type) {
 }
 
 function currentFile(st) {
-  const t = (st.typeFiles || []).find(x => x.type === st.typeName);
-  return t && t.files.length ? { list: t.files, file: t.files[st.fileIdx] || t.files[0] } : null;
+  const x = (st.typeFiles || []).find(y => y.type === st.typeName);
+  return x && x.files.length ? { list: x.files, file: x.files[st.fileIdx] || x.files[0] } : null;
 }
 
 function renderTools(id) {
@@ -414,18 +584,18 @@ function renderTools(id) {
   }
   if (st.mode === 'dxf' || st.mode === 'iges') {
     html += `<button onclick="zoomViewer('${id}', 1.25)">＋</button><button onclick="zoomViewer('${id}', 0.8)">－</button>
-      <button onclick="resetViewer('${id}')">Fit</button>
-      <button id="btn-meas-${id}" onclick="toggleMeasure('${id}')">📏 Measure</button>
+      <button onclick="resetViewer('${id}')">${esc(t('fit'))}</button>
+      <button id="btn-meas-${id}" onclick="toggleMeasure('${id}')">📏 ${esc(t('measure'))}</button>
       <span class="meas" id="meas-info-${id}"></span>`;
   }
   html += `<span class="grow"></span>`;
   if (cur) {
-    html += `<button onclick="openExternal('${id}')" title="Open with the default program">↗ Open</button>
-      <button onclick="openFolder('${id}')" title="Show in folder">📁</button>
-      <button onclick="location.href=fileUrl(currentFile(openTabs['${id}']).file.path, true)">⬇ Download</button>`;
+    html += `<button onclick="openExternal('${id}')" title="${esc(t('open_default'))}">↗ ${esc(t('open'))}</button>
+      <button onclick="openFolder('${id}')" title="${esc(t('show_folder'))}">📁</button>
+      <button onclick="downloadCurrent('${id}')">⬇ ${esc(t('download'))}</button>`;
   }
   if (st.typeName) {
-    html += `<button onclick="downloadZip('${id}')" title="All ${esc(st.typeName)} files of this product in one ZIP">⬇ ZIP all ${esc(st.typeName)}</button>`;
+    html += `<button onclick="downloadZip('${id}')" title="${esc(t('zip_title', st.typeName))}">⬇ ${esc(t('zip_all', st.typeName))}</button>`;
   }
   document.getElementById('tools-' + id).innerHTML = html;
 }
@@ -434,33 +604,45 @@ async function showFile(id) {
   const st = openTabs[id];
   const stage = document.getElementById('stage-' + id);
   const cur = currentFile(st);
+  const seq = st.showSeq = (st.showSeq || 0) + 1;
+  const stale = () => openTabs[id] !== st || st.showSeq !== seq; // another file was picked meanwhile
   st.mode = cur ? cur.file.viewer : null;
-  st.cadData = null; st.measuring = false;
+  st.cadData = null; st.measuring = false; st.defaultDimText = '';
   st.pt1 = st.pt2 = st.selectedSeg = st.hoverPt = st.hoverSeg = null; st.measureText = '';
   renderTools(id);
 
   if (!cur) {
     const n = st.rows[st.sel].node;
-    stage.innerHTML = `<div class="empty">No files found for <b>${esc(n.code || '(no code)')}</b>.<br>
-      <span class="muted">Check the file type folders in Settings, or whether the file name matches the part code.</span></div>`;
+    stage.innerHTML = `<div class="empty">${esc(t('no_files', n.code || t('no_code')))}<br>
+      <span class="muted">${esc(t('no_files_hint'))}</span></div>`;
     return;
   }
   const f = cur.file;
   if (st.mode === 'pdf') {
-    stage.innerHTML = `<iframe src="${fileUrl(f.path)}#view=Fit"></iframe>`;
+    stage.innerHTML = `<iframe src="${esc(fileUrl(f.path))}#view=Fit"></iframe>`;
   } else if (st.mode === 'image') {
-    stage.innerHTML = `<img src="${fileUrl(f.path)}" alt="">`;
+    stage.innerHTML = `<img src="${esc(fileUrl(f.path))}" alt="">`;
   } else if (st.mode === 'text') {
-    const r = await fetch(fileUrl(f.path));
-    const t = await r.text();
-    stage.innerHTML = `<pre>${esc(t.length > 500000 ? t.slice(0, 500000) + '\n…' : t)}</pre>`;
+    stage.innerHTML = '';
+    // Decode as UTF-8 and fall back to Windows-1252 (common for CNC programs).
+    const buf = await (await fetch(fileUrl(f.path))).arrayBuffer();
+    if (stale()) return;
+    let txt;
+    try { txt = new TextDecoder('utf-8', { fatal: true }).decode(buf); }
+    catch (e) { txt = new TextDecoder('windows-1252').decode(buf); }
+    stage.innerHTML = `<pre>${esc(txt.length > 500000 ? txt.slice(0, 500000) + '\n…' : txt)}</pre>`;
   } else if (st.mode === 'dxf' || st.mode === 'iges') {
     stage.innerHTML = `<canvas class="cad-canvas" id="canvas-${id}"></canvas>`;
     watchStageResize(id);
-    const r = await fetch(`/api/cad_data?path=${encodeURIComponent(f.path)}&kind=${st.mode}`);
-    st.cadData = await r.json();
+    let d = null;
+    try {
+      const r = await fetch(`/api/cad_data?path=${encodeURIComponent(f.path)}&kind=${st.mode}`);
+      if (r.ok) d = await r.json();
+    } catch (e) {}
+    if (stale()) return;
+    st.cadData = d || { segments: [], faces: [] };
     st.zoom = 1; st.panX = 0; st.panY = 0;
-    const d = st.cadData;
+    d = st.cadData;
     st.defaultDimText = st.mode === 'dxf'
       ? `${(d.width || 0).toFixed(1)} × ${(d.height || 0).toFixed(1)} mm`
       : `${(d.dx || 0).toFixed(1)} × ${(d.dy || 0).toFixed(1)} × ${(d.dz || 0).toFixed(1)} mm`;
@@ -469,8 +651,8 @@ async function showFile(id) {
     setupCanvasInteractions(id);
     drawCadCanvas(id);
   } else {
-    stage.innerHTML = `<div class="empty">EngTree has no built-in viewer for <b>${esc(f.ext)}</b> files.<br><br>
-      <button class="primary" onclick="openExternal('${id}')">Open with the default program</button></div>`;
+    stage.innerHTML = `<div class="empty">${esc(t('no_viewer', f.ext))}<br><br>
+      <button class="primary" onclick="openExternal('${id}')">${esc(t('open_default'))}</button></div>`;
   }
 }
 
@@ -482,11 +664,15 @@ async function openFolder(id) {
   const cur = currentFile(openTabs[id]);
   if (cur) await fetch('/api/open_folder?path=' + encodeURIComponent(cur.file.path), { method: 'POST' });
 }
+function downloadCurrent(id) {
+  const cur = currentFile(openTabs[id]);
+  if (cur) location.href = fileUrl(cur.file.path, true);
+}
 async function downloadZip(id) {
   const st = openTabs[id];
   const url = `/api/package_zip?code=${encodeURIComponent(st.product.code)}&type=${encodeURIComponent(st.typeName)}`;
   const r = await fetch(url, { method: 'HEAD' });
-  if (!r.ok) { alert(await (await fetch(url)).text()); return; }
+  if (!r.ok) { alert(r.status === 503 ? t('zip_offline') : t('zip_none', st.typeName)); return; }
   location.href = url;
 }
 
@@ -494,13 +680,19 @@ function startResize(ev, id) {
   ev.preventDefault();
   const left = document.getElementById('left-' + id);
   const startX = ev.clientX, startW = left.offsetWidth;
+  // The PDF iframe swallows mouse events, so switch them off while dragging.
+  document.body.style.pointerEvents = 'none';
   const move = e => { left.style.width = Math.max(300, startW + e.clientX - startX) + 'px'; };
-  const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+  const up = () => {
+    document.body.style.pointerEvents = '';
+    window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up);
+  };
   window.addEventListener('mousemove', move);
   window.addEventListener('mouseup', up);
 }
 
 window.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closeModal('settings'); closeModal('about'); return; }
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
   const active = document.querySelector('.tab.active');
   const id = active && active.id.replace('tab-btn-', '');
@@ -533,7 +725,7 @@ function toggleMeasure(tabId) {
   st.pt1 = null; st.pt2 = null; st.selectedSeg = null;
   document.getElementById(`btn-meas-${tabId}`).classList.toggle('active', st.measuring);
   document.getElementById('meas-info-' + tabId).innerText = st.measuring
-    ? 'Measuring: hover and click a line, or two points'
+    ? t('meas_on')
     : st.defaultDimText;
   drawCadCanvas(tabId);
 }
@@ -577,7 +769,7 @@ function setupCanvasInteractions(tabId) {
           st.selectedSeg = null;
           st.measureText = '';
           document.getElementById('meas-info-' + tabId).innerText =
-            `P1 set (${st.pt1.wx.toFixed(1)}, ${st.pt1.wy.toFixed(1)}) — click the second point`;
+            t('meas_p1', st.pt1.wx.toFixed(1), st.pt1.wy.toFixed(1));
           drawCadCanvas(tabId);
           return;
         } else {
@@ -588,7 +780,7 @@ function setupCanvasInteractions(tabId) {
           const dist = Math.hypot(dx, dy, dz);
           st.measureText = `${dist.toFixed(2)} mm`;
           document.getElementById('meas-info-' + tabId).innerText =
-            `Distance: ${dist.toFixed(2)} mm (ΔX=${dx.toFixed(2)}, ΔY=${dy.toFixed(2)}${st.mode==='iges'?`, ΔZ=${dz.toFixed(2)}`:''})`;
+            t('meas_dist') + ` ${dist.toFixed(2)} mm (ΔX=${dx.toFixed(2)}, ΔY=${dy.toFixed(2)}${st.mode==='iges'?`, ΔZ=${dz.toFixed(2)}`:''})`;
           drawCadCanvas(tabId);
           return;
         }
@@ -603,12 +795,13 @@ function setupCanvasInteractions(tabId) {
         const dist = Math.hypot(dx, dy, dz);
         st.measureText = `${dist.toFixed(2)} mm`;
         document.getElementById('meas-info-' + tabId).innerText =
-          `Line length: ${dist.toFixed(2)} mm (ΔX=${dx.toFixed(2)}, ΔY=${dy.toFixed(2)}${st.mode==='iges'?`, ΔZ=${dz.toFixed(2)}`:''})`;
+          t('meas_line') + ` ${dist.toFixed(2)} mm (ΔX=${dx.toFixed(2)}, ΔY=${dy.toFixed(2)}${st.mode==='iges'?`, ΔZ=${dz.toFixed(2)}`:''})`;
         drawCadCanvas(tabId);
         return;
       }
     }
     dragging = true; lx = e.clientX; ly = e.clientY;
+    window.addEventListener('mouseup', () => dragging = false, { once: true });
   });
 
   canvas.addEventListener('mousemove', e => {
@@ -647,7 +840,6 @@ function setupCanvasInteractions(tabId) {
     drawCadCanvas(tabId);
   });
 
-  window.addEventListener('mouseup', () => dragging = false);
 }
 
 function watchStageResize(tabId) {
@@ -673,7 +865,7 @@ function drawCadCanvas(tabId) {
   if (!d.segments) d.segments = [];
   if (!d.faces) d.faces = [];
   if (!d.segments.length && !d.faces.length) {
-    canvas.parentElement.innerHTML = `<div style="padding:30px; color:#9aa0b0;">Could not read the geometry of this ${st.mode.toUpperCase()} file.</div>`;
+    canvas.parentElement.innerHTML = `<div style="padding:30px; color:#9aa0b0;">${t('cad_fail', st.mode.toUpperCase())}</div>`;
     return;
   }
 
@@ -854,13 +1046,14 @@ function addFileTypeRow(ft) {
   tr.innerHTML = `<td><input class="ft-name" value="${esc(ft.name)}" placeholder="PDF"></td>
     <td><input class="ft-ext" value="${esc((ft.extensions || []).join(', '))}" placeholder=".pdf"></td>
     <td><input class="ft-folders" value="${esc((ft.folders || []).join('; '))}" placeholder="\\\\server\\drawings"></td>
-    <td><select class="ft-match"><option value="exact" ${ft.match === 'exact' ? 'selected' : ''}>Exact</option><option value="prefix" ${ft.match !== 'exact' ? 'selected' : ''}>Prefix</option></select></td>
-    <td><button onclick="this.closest('tr').remove()" title="Remove">✕</button></td>`;
+    <td><select class="ft-match"><option value="exact" ${ft.match === 'exact' ? 'selected' : ''}>${esc(t('ft_exact'))}</option><option value="prefix" ${ft.match !== 'exact' ? 'selected' : ''}>${esc(t('ft_prefix'))}</option></select></td>
+    <td><button onclick="this.closest('tr').remove()" title="${esc(t('ft_remove'))}">✕</button></td>`;
   document.getElementById('ft-body').appendChild(tr);
 }
 
 function fillSettings(c) {
   const v = (id, val) => document.getElementById(id).value = val || '';
+  v('s-lang', c.language);
   v('s-bom-folder', c.bom_folder); v('s-bom-prefix', c.bom_prefix); v('s-sep', c.name_separator);
   v('s-det-prefix', c.details_prefix); v('s-det-file', c.details_file);
   v('s-c-item', c.columns.item); v('s-c-code', c.columns.code); v('s-c-desc', c.columns.description); v('s-c-qty', c.columns.qty);
@@ -877,7 +1070,14 @@ async function openSettings() {
 
 async function restoreDefaults() {
   const d = await (await fetch('/api/default_config')).json();
-  d.bom_folder = document.getElementById('s-bom-folder').value; // keep the folder
+  // Keep what is specific to this computer: language and folders.
+  d.language = document.getElementById('s-lang').value;
+  d.bom_folder = document.getElementById('s-bom-folder').value;
+  const folders = {};
+  document.querySelectorAll('#ft-body tr').forEach(tr => {
+    folders[tr.querySelector('.ft-name').value.trim().toUpperCase()] = tr.querySelector('.ft-folders').value.split(';').map(x => x.trim()).filter(Boolean);
+  });
+  d.file_types.forEach(ft => { ft.folders = folders[ft.name.toUpperCase()] || []; });
   fillSettings(d);
 }
 
@@ -885,6 +1085,7 @@ async function saveSettings() {
   const g = id => document.getElementById(id).value;
   const split = (s, sep) => s.split(sep).map(x => x.trim()).filter(Boolean);
   const c = Object.assign({}, cfgCache, {
+    language: g('s-lang'),
     bom_folder: g('s-bom-folder').trim(), bom_prefix: g('s-bom-prefix'), name_separator: g('s-sep'),
     details_prefix: g('s-det-prefix'), details_file: g('s-det-file').trim(),
     columns: { item: g('s-c-item'), code: g('s-c-code'), description: g('s-c-desc'), qty: g('s-c-qty') },
@@ -896,12 +1097,10 @@ async function saveSettings() {
       match: tr.querySelector('.ft-match').value
     })).filter(f => f.name)
   });
-  await fetch('/api/config', { method: 'POST', body: JSON.stringify(c) });
-  closeModal('settings');
-  pollStatus.msg = '';
-  document.getElementById('list-status').innerText = 'Reading the BOM folder…';
-  pollStatus.wasScanning = true;
-  setTimeout(pollStatus, 400);
+  const r = await fetch('/api/config', { method: 'POST', body: JSON.stringify(c) });
+  if (!r.ok) return;
+  // Reload so the new language, columns and folders apply everywhere.
+  location.reload();
 }
 
 // ---------- about ----------
@@ -917,8 +1116,15 @@ function openRepo(path) { fetch('/api/open_url?url=' + encodeURIComponent(repoUr
 
 // ---------- start ----------
 window.addEventListener('pagehide', () => navigator.sendBeacon('/api/closing'));
-pollStatus().then(loadProducts);
-setInterval(pollStatus, 4000);
+(async function start() {
+  try { lang = pickLang((await (await fetch('/api/config')).json()).language); } catch (e) {}
+  document.documentElement.lang = lang;
+  applyI18n(document);
+  await pollStatus();
+  pollStatus.wasScanning = true; // load the list as soon as the first scan ends
+  await loadProducts();
+  setInterval(pollStatus, 4000);
+})();
 </script>
 </body>
 </html>

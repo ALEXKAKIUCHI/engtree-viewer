@@ -36,24 +36,7 @@ func readTable(path string) [][]string {
 	}
 	text = strings.ReplaceAll(text, "\r\n", "\n")
 
-	delim := detectDelimiter(text)
-	var rows [][]string
-	if delim == '\t' {
-		// Tab-separated text (SolidWorks "Save as .txt"): no quoting rules.
-		for _, line := range strings.Split(text, "\n") {
-			if strings.TrimSpace(line) == "" {
-				continue
-			}
-			rows = append(rows, strings.Split(line, "\t"))
-		}
-	} else {
-		r := csv.NewReader(strings.NewReader(text))
-		r.Comma = delim
-		r.FieldsPerRecord = -1
-		r.LazyQuotes = true
-		all, _ := r.ReadAll()
-		rows = all
-	}
+	rows := parseDelimited(text, detectDelimiter(text))
 
 	var out [][]string
 	for _, row := range rows {
@@ -69,6 +52,24 @@ func readTable(path string) [][]string {
 		}
 	}
 	return out
+}
+
+// parseDelimited reads CSV-style text (Excel quotes fields that contain the
+// delimiter). If the quoting is broken it falls back to a plain split, so a
+// stray quote never makes the whole file unreadable.
+func parseDelimited(text string, delim rune) [][]string {
+	r := csv.NewReader(strings.NewReader(text))
+	r.Comma = delim
+	r.FieldsPerRecord = -1
+	r.LazyQuotes = true
+	if rows, err := r.ReadAll(); err == nil {
+		return rows
+	}
+	var rows [][]string
+	for _, line := range strings.Split(text, "\n") {
+		rows = append(rows, strings.Split(line, string(delim)))
+	}
+	return rows
 }
 
 // decodeText accepts UTF-8 (with or without BOM), UTF-16 and falls back to

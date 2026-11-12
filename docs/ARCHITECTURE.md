@@ -27,7 +27,11 @@ ui/index.html                                   Go server
 
 ## Matching files to codes
 
-For each file type, an index `key -> files` is built from the folder listings (cached 45 s). With *exact* matching the key is the file name without extension. With *prefix* matching the name is also cut at every non-alphanumeric character, so `abc-100_rev2` yields `abc-100_rev2`, `abc-100` and `abc`; `abc-1000` never yields `abc-100`. A lookup is then a map access, which keeps big trees fast.
+For each file type, an index `key -> files` is built from the folder listings (cached 45 s). With *exact* matching the key is the file name without extension. With *prefix* matching the name is also cut at every non-alphanumeric character, so `abc-100_rev2` yields `abc-100_rev2`, `abc-100` and `abc`; `abc-1000` never yields `abc-100`. A lookup is then a map access, which keeps big trees fast. A prefix match is dropped when the file name also yields a longer key that is another code of the same product (`abc-100-01.pdf` is not a revision of `abc-100` if `abc-100-01` is in the BOM).
+
+## Languages
+
+All UI text lives in the `I18N` table at the top of the script in `ui/index.html` (`en`, `pt-BR`). The server sends warning codes, not sentences. To add a language, add a block to `I18N` and an option to the language select.
 
 ## API
 
@@ -38,7 +42,7 @@ For each file type, an index `key -> files` is built from the folder listings (c
 | `GET /api/refresh` | rescan the BOM folder |
 | `GET/POST /api/config`, `GET /api/default_config` | settings |
 | `GET /api/product?code=` | BOM tree with per-node file availability |
-| `GET /api/item_files?code=` | files per type for one code |
+| `GET /api/item_files?code=&product=` | files per type for one code |
 | `GET /api/file?path=[&download=1]` | only inside configured folders |
 | `GET /api/cad_data?path=&kind=dxf\|iges` | geometry as JSON |
 | `GET /api/package_zip?code=&type=` | ZIP of one file type for the whole product |

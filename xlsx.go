@@ -118,6 +118,10 @@ func formatNumber(v string) string {
 	if err != nil {
 		return v
 	}
+	// 12 significant digits hide binary noise such as 0.30000000000000004.
+	if r, err := strconv.ParseFloat(strconv.FormatFloat(f, 'g', 12, 64), 64); err == nil {
+		f = r
+	}
 	return strconv.FormatFloat(f, 'f', -1, 64)
 }
 

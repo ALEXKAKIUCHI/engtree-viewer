@@ -31,7 +31,7 @@ type TreeNode struct {
 type BomResult struct {
 	Columns  []string    `json:"columns"`  // extra columns, in display order
 	Tree     []*TreeNode `json:"tree"`     // top-level lines
-	Warnings []string    `json:"warnings"` // shown to the user (missing columns, etc.)
+	Warnings []string    `json:"warnings"` // codes translated by the UI (missing columns, etc.)
 }
 
 // ---- Header matching ----
@@ -119,15 +119,28 @@ func findColumn(header []string, alternatives string, taken map[int]bool) int {
 	})
 }
 
-// findHeaderRow returns the first row (within the first 15) that has a code
-// column. Some exports put a title or blank lines above the header.
-func findHeaderRow(rows [][]string, codeAlts string) (int, int) {
+// findHeaderRow returns the header row (within the first 15 rows) and its
+// code column. Some exports put a title or blank lines above the header, so
+// a row that also has a description, quantity or item column is preferred
+// over one that merely contains a word like "Part" (e.g. a "Part list" title).
+func findHeaderRow(rows [][]string, cols Columns) (int, int) {
+	first, firstCol := -1, -1
 	for i := 0; i < len(rows) && i < 15; i++ {
-		if c := findColumn(rows[i], codeAlts, nil); c >= 0 {
+		c := findColumn(rows[i], cols.Code, nil)
+		if c < 0 {
+			continue
+		}
+		taken := map[int]bool{c: true}
+		if findColumn(rows[i], cols.Description, taken) >= 0 ||
+			findColumn(rows[i], cols.Qty, taken) >= 0 ||
+			findColumn(rows[i], cols.Item, taken) >= 0 {
 			return i, c
 		}
+		if first < 0 {
+			first, firstCol = i, c
+		}
 	}
-	return -1, -1
+	return first, firstCol
 }
 
 func cell(row []string, i int) string {
@@ -165,8 +178,11 @@ func scanProducts(cfg Config) []Product {
 	boms := map[string]DirEntryInfo{}
 
 	for _, e := range entries {
-		if strings.HasPrefix(e.Name, "~$") || !isSheetFile(e.Name) {
-			continue // Excel lock files and anything that is not a spreadsheet
+		if strings.HasPrefix(e.Name, "~$") || strings.HasPrefix(e.Name, ".") || !isSheetFile(e.Name) {
+			continue // Excel/LibreOffice lock files and anything that is not a spreadsheet
+		}
+		if cfg.DetailsFile != "" && strings.EqualFold(filepath.Clean(e.FullPath), filepath.Clean(cfg.DetailsFile)) {
+			continue // the shared details file is not a product
 		}
 		if cfg.DetailsPrefix != "" && hasPrefixFold(e.Name, cfg.DetailsPrefix) {
 			code, _ := splitName(e.Name, cfg.DetailsPrefix, cfg.NameSeparator)
@@ -217,7 +233,7 @@ type detailsTable struct {
 
 func readDetails(path string, cfg Config) *detailsTable {
 	rows := readTable(path)
-	h, codeCol := findHeaderRow(rows, cfg.Columns.Code)
+	h, codeCol := findHeaderRow(rows, cfg.Columns)
 	if h < 0 {
 		return nil
 	}
@@ -249,12 +265,12 @@ func buildBom(p Product, cfg Config) BomResult {
 	res := BomResult{Columns: []string{}, Tree: []*TreeNode{}, Warnings: []string{}}
 	rows := readTable(p.BomFile)
 	if len(rows) == 0 {
-		res.Warnings = append(res.Warnings, "Could not read the BOM file (empty, open in another program, or old .xls format).")
+		res.Warnings = append(res.Warnings, "bom_unreadable")
 		return res
 	}
-	h, codeCol := findHeaderRow(rows, cfg.Columns.Code)
+	h, codeCol := findHeaderRow(rows, cfg.Columns)
 	if h < 0 {
-		res.Warnings = append(res.Warnings, "No part code column found. Check the column names in Settings.")
+		res.Warnings = append(res.Warnings, "no_code_column")
 		return res
 	}
 	header := rows[h]
@@ -266,7 +282,7 @@ func buildBom(p Product, cfg Config) BomResult {
 	qtyCol := findColumn(header, cfg.Columns.Qty, taken)
 	taken[qtyCol] = true
 	if itemCol < 0 {
-		res.Warnings = append(res.Warnings, "No item number column found: the BOM is shown as a flat list.")
+		res.Warnings = append(res.Warnings, "no_item_column")
 	}
 
 	hidden := map[string]bool{}
@@ -296,7 +312,7 @@ func buildBom(p Product, cfg Config) BomResult {
 	if detailsPath != "" {
 		det = readDetails(detailsPath, cfg)
 		if det == nil {
-			res.Warnings = append(res.Warnings, "The details spreadsheet has no part code column; it was ignored.")
+			res.Warnings = append(res.Warnings, "details_no_code")
 		} else {
 			pos := map[string]int{}
 			for k, i := range extraIdx {

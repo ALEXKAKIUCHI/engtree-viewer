@@ -12,4 +12,5 @@ First public version.
 - Viewers: PDF, DXF and IGES (with measuring), images and text; other files open in their default program
 - Several matching files per part (revisions) with a picker; ZIP of all files of one type for a product
 - Portable mode with engtree.json next to the executable
-- Files served only from configured folders; no telemetry
+- Interface in English and Portuguese (Brazil)
+- Files served only from configured folders; requests from other web sites refused; no telemetry

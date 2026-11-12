@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"mime"
 	"net"
 	"net/http"
 	"os"
@@ -33,9 +34,15 @@ var (
 	products  []Product
 	cachePath string
 
-	scanMu   sync.Mutex
-	scanning bool
-	lastScan string // human-readable result of the last scan
+	scanMu      sync.Mutex
+	scanning    bool
+	scanPending bool   // a rescan was asked for while one was running
+	lastScan    string // result of the last scan
+
+	// Codes of each opened product, used to tell "ABC-100-01.pdf" (its own
+	// part) from a revision of "ABC-100". Key: product code in upper case.
+	codeSetMu sync.RWMutex
+	codeSets  = map[string]map[string]bool{}
 )
 
 // ---- Product list ----
@@ -51,6 +58,7 @@ func loadProductsCache() {
 func refreshProducts() {
 	scanMu.Lock()
 	if scanning {
+		scanPending = true // e.g. settings saved during a scan: run again after it
 		scanMu.Unlock()
 		return
 	}
@@ -58,14 +66,23 @@ func refreshProducts() {
 	scanMu.Unlock()
 
 	go func() {
-		defer func() { scanMu.Lock(); scanning = false; scanMu.Unlock() }()
+		defer func() {
+			scanMu.Lock()
+			scanning = false
+			again := scanPending
+			scanPending = false
+			scanMu.Unlock()
+			if again {
+				refreshProducts()
+			}
+		}()
 		cfg := getConfig()
 		msg := ""
 		switch {
 		case !cfg.isConfigured():
 			msg = "not_configured"
 		case !folderReachable(cfg.BomFolder):
-			msg = "BOM folder not reachable. Showing the last saved list."
+			msg = "offline"
 		default:
 			invalidateDirCache()
 			list := scanProducts(cfg)
@@ -75,7 +92,7 @@ func refreshProducts() {
 			if b, err := json.Marshal(list); err == nil {
 				_ = os.WriteFile(cachePath, b, 0644)
 			}
-			msg = fmt.Sprintf("%d products", len(list))
+			msg = "ok"
 		}
 		scanMu.Lock()
 		lastScan = msg
@@ -128,23 +145,33 @@ func folderReachable(folder string) bool {
 	}
 }
 
+type reachItem struct {
+	ts time.Time
+	ok bool
+}
+
 var (
-	reachMu        sync.Mutex
-	reachCheckedAt time.Time
-	reachLast      bool
+	reachMu    sync.Mutex
+	reachCache = map[string]reachItem{}
 )
 
-// bomFolderOnline is the cached (2 s) check behind the "folder offline" bar.
-func bomFolderOnline() bool {
+// folderReachableCached remembers the answer for 3 s, so the status bar and
+// a burst of file lookups do not test the network over and over.
+func folderReachableCached(folder string) bool {
 	reachMu.Lock()
-	defer reachMu.Unlock()
-	if time.Since(reachCheckedAt) < 2*time.Second {
-		return reachLast
+	if it, ok := reachCache[folder]; ok && time.Since(it.ts) < 3*time.Second {
+		reachMu.Unlock()
+		return it.ok
 	}
-	reachLast = folderReachable(getConfig().BomFolder)
-	reachCheckedAt = time.Now()
-	return reachLast
+	reachMu.Unlock()
+	ok := folderReachable(folder)
+	reachMu.Lock()
+	reachCache[folder] = reachItem{time.Now(), ok}
+	reachMu.Unlock()
+	return ok
 }
+
+func bomFolderOnline() bool { return folderReachableCached(getConfig().BomFolder) }
 
 // ---- Security ----
 //
@@ -188,7 +215,32 @@ func isAllowedPath(p string, cfg Config) bool {
 	return false
 }
 
+// guard rejects requests that do not come from the app's own window: other
+// web sites open in the same browser (cross-site requests) and DNS-rebinding
+// tricks (a foreign host name pointing at 127.0.0.1).
+func guard(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host := r.Host
+		if h, _, err := net.SplitHostPort(host); err == nil {
+			host = h
+		}
+		origin := r.Header.Get("Origin")
+		if (host != "127.0.0.1" && host != "localhost") ||
+			r.Header.Get("Sec-Fetch-Site") == "cross-site" ||
+			(origin != "" && origin != "http://"+r.Host) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // ---- Helpers ----
+
+// attachment sets a download file name that survives accents and spaces.
+func attachment(w http.ResponseWriter, name string) {
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": name}))
+}
 
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
@@ -321,7 +373,7 @@ func main() {
 			saveConfigLocked()
 			cfgMu.Unlock()
 			reachMu.Lock()
-			reachCheckedAt = time.Time{}
+			reachCache = map[string]reachItem{}
 			reachMu.Unlock()
 			refreshProducts()
 		}
@@ -362,9 +414,13 @@ func main() {
 		var productFiles []string
 		if online {
 			res = buildBom(*p, cfg)
-			markAvailability(cfg, res.Tree)
+			others := codeSet(p.Code, res.Tree)
+			codeSetMu.Lock()
+			codeSets[strings.ToUpper(p.Code)] = others
+			codeSetMu.Unlock()
+			markAvailability(cfg, res.Tree, others)
 			root := &TreeNode{Code: p.Code}
-			markAvailability(cfg, []*TreeNode{root})
+			markAvailability(cfg, []*TreeNode{root}, others)
 			productFiles = root.Files
 		}
 		writeJSON(w, map[string]any{
@@ -377,7 +433,10 @@ func main() {
 	})
 
 	mux.HandleFunc("/api/item_files", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, findAllFiles(getConfig(), r.URL.Query().Get("code")))
+		codeSetMu.RLock()
+		others := codeSets[strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("product")))]
+		codeSetMu.RUnlock()
+		writeJSON(w, findAllFiles(getConfig(), r.URL.Query().Get("code"), others))
 	})
 
 	mux.HandleFunc("/api/file", func(w http.ResponseWriter, r *http.Request) {
@@ -387,7 +446,7 @@ func main() {
 			return
 		}
 		if r.URL.Query().Get("download") == "1" {
-			w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filepath.Base(p)))
+			attachment(w, filepath.Base(p))
 		}
 		http.ServeFile(w, r, p)
 	})
@@ -460,7 +519,7 @@ func main() {
 		}
 		entries := collectPackage(cfg, *ft, p.Code, buildBom(*p, cfg).Tree)
 		if len(entries) == 0 {
-			http.Error(w, fmt.Sprintf("No %s files found for %s.", ft.Name, p.Code), 404)
+			http.Error(w, "no files", 404)
 			return
 		}
 		if r.Method == http.MethodHead {
@@ -468,7 +527,7 @@ func main() {
 			return
 		}
 		w.Header().Set("Content-Type", "application/zip")
-		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", p.Code+"_"+ft.Name+".zip"))
+		attachment(w, p.Code+"_"+ft.Name+".zip")
 		writeZip(w, entries)
 	})
 
@@ -498,7 +557,7 @@ func main() {
 		startTaskbarIdentity()
 		go watchForWindowClose()
 	}
-	_ = http.Serve(listener, trackActivity(mux))
+	_ = http.Serve(listener, guard(trackActivity(mux)))
 }
 
 // ---- Exit when the window closes ----

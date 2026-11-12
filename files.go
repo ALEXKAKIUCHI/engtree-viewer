@@ -57,6 +57,10 @@ func scanDirCached(folder string) []DirEntryInfo {
 	}
 	dirCacheMu.Unlock()
 
+	// Listing a dead network share can block for a long time, so check first.
+	if !folderReachableCached(folder) {
+		return nil
+	}
 	raw, err := os.ReadDir(folder)
 	if err != nil {
 		return nil
@@ -186,14 +190,24 @@ func indexFor(ft FileType) map[string][]FoundFile {
 
 // findFiles returns the files of one type for a code: exact name first,
 // then newest first.
-func findFiles(ft FileType, code string) []FoundFile {
+//
+// others is the set of all codes (lower case) of the same product. With
+// prefix matching, "abc-100-01.pdf" would also look like a revision of
+// "abc-100"; when "abc-100-01" is itself a code of the product, the file
+// belongs to that part only and is left out here.
+func findFiles(ft FileType, code string, others map[string]bool) []FoundFile {
 	code = strings.ToLower(strings.TrimSpace(code))
 	if code == "" {
 		return nil
 	}
-	list := append([]FoundFile(nil), indexFor(ft)[code]...)
-	for i := range list {
-		list[i].exact = strings.TrimSuffix(strings.ToLower(list[i].Name), list[i].Ext) == code
+	var list []FoundFile
+	for _, f := range indexFor(ft)[code] {
+		stem := strings.TrimSpace(strings.TrimSuffix(strings.ToLower(f.Name), f.Ext))
+		f.exact = stem == code
+		if !f.exact && belongsToLongerCode(stem, code, others) {
+			continue
+		}
+		list = append(list, f)
 	}
 	sort.SliceStable(list, func(i, j int) bool {
 		if list[i].exact != list[j].exact {
@@ -204,15 +218,38 @@ func findFiles(ft FileType, code string) []FoundFile {
 	return list
 }
 
+func belongsToLongerCode(stem, code string, others map[string]bool) bool {
+	if len(others) == 0 {
+		return false
+	}
+	for _, k := range codeKeys(stem) {
+		if len(k) > len(code) && others[k] {
+			return true
+		}
+	}
+	return false
+}
+
+// codeSet collects every code of a product (lower case).
+func codeSet(productCode string, tree []*TreeNode) map[string]bool {
+	set := map[string]bool{strings.ToLower(strings.TrimSpace(productCode)): true}
+	walkTree(tree, func(n *TreeNode) {
+		if c := strings.ToLower(strings.TrimSpace(n.Code)); c != "" {
+			set[c] = true
+		}
+	})
+	return set
+}
+
 type TypeFiles struct {
 	Type  string      `json:"type"`
 	Files []FoundFile `json:"files"`
 }
 
-func findAllFiles(cfg Config, code string) []TypeFiles {
+func findAllFiles(cfg Config, code string, others map[string]bool) []TypeFiles {
 	out := []TypeFiles{}
 	for _, ft := range cfg.FileTypes {
-		files := findFiles(ft, code)
+		files := findFiles(ft, code, others)
 		if files == nil {
 			files = []FoundFile{}
 		}
@@ -223,11 +260,11 @@ func findAllFiles(cfg Config, code string) []TypeFiles {
 
 // markAvailability fills TreeNode.Files with the file types found per code,
 // so the tree can show at a glance what exists for each part.
-func markAvailability(cfg Config, nodes []*TreeNode) {
+func markAvailability(cfg Config, nodes []*TreeNode, others map[string]bool) {
 	walkTree(nodes, func(n *TreeNode) {
 		n.Files = []string{}
 		for _, ft := range cfg.FileTypes {
-			if len(findFiles(ft, n.Code)) > 0 {
+			if len(findFiles(ft, n.Code, others)) > 0 {
 				n.Files = append(n.Files, ft.Name)
 			}
 		}
@@ -254,11 +291,12 @@ func collectPackage(cfg Config, ft FileType, productCode string, tree []*TreeNod
 		}
 	})
 
+	others := codeSet(productCode, tree)
 	var out []ZipEntry
 	usedPath := map[string]bool{}
 	usedName := map[string]bool{}
 	for _, c := range codes {
-		files := findFiles(ft, c)
+		files := findFiles(ft, c, others)
 		if len(files) == 0 || usedPath[files[0].Path] {
 			continue
 		}
@@ -283,7 +321,11 @@ func writeZip(w io.Writer, entries []ZipEntry) {
 		if err != nil {
 			continue
 		}
-		if fw, err := zw.Create(item.ArcName); err == nil {
+		hdr := &zip.FileHeader{Name: item.ArcName, Method: zip.Deflate}
+		if info, err := f.Stat(); err == nil {
+			hdr.Modified = info.ModTime() // keep the file date inside the ZIP
+		}
+		if fw, err := zw.CreateHeader(hdr); err == nil {
 			_, _ = io.Copy(fw, f)
 		}
 		_ = f.Close()

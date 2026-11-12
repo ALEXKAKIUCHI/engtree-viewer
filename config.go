@@ -36,6 +36,8 @@ type Config struct {
 	// Folder with the BOM spreadsheets (.xlsx, .csv, .txt). Each BOM file is
 	// one product. The product code and description come from the file name:
 	// "<prefix><code><separator><description>.xlsx".
+	Language string `json:"language"` // "" = follow the system, "en" or "pt-BR"
+
 	BomFolder     string `json:"bom_folder"`
 	BomPrefix     string `json:"bom_prefix"`     // e.g. "BOM - "; empty = every spreadsheet is a BOM
 	NameSeparator string `json:"name_separator"` // between code and description, default " - "
@@ -59,7 +61,7 @@ type Config struct {
 func defaultColumns() Columns {
 	return Columns{
 		Item:        "ITEM NO|ITEM|Nº DO ITEM|N DO ITEM|NUMERO DO ITEM",
-		Code:        "PART NUMBER|PART NO|PART|CODE|CODIGO|NUMERO DA PECA|REFERENCIA",
+		Code:        "PART NUMBER|PART NO|PART|CODE|CODIGO|Nº DA PEÇA|NUMERO DA PECA|REFERENCIA",
 		Description: "DESCRIPTION|DESCRICAO|DESCRIPCION|DESC",
 		Qty:         "QTY|QUANTITY|QTD|QTDE|QUANTIDADE|CANTIDAD",
 	}

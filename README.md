@@ -1,5 +1,7 @@
 # EngTree Viewer
 
+**English** · [Português (Brasil)](README.pt-BR.md)
+
 A small, fast desktop viewer for engineering BOMs. Open a product, see its Bill of Materials as a tree, click any part and its drawing, DXF or 3D file opens right next to it.
 
 Made for the shop floor: one portable `.exe`, no install, no database, no account. It reads the spreadsheets and folders you already have (local or on a network share) and never changes them. Runs well on old, low-spec PCs where heavier CAD viewers struggle.
@@ -14,6 +16,7 @@ Made for the shop floor: one portable `.exe`, no install, no database, no accoun
 - **Your spreadsheets, your columns**: `.xlsx`, `.csv` (comma or semicolon) or tab-separated `.txt`. Only four key columns need to be found (item, code, description, quantity); every other column is shown as it is
 - **Optional details sheet** joined by part code (finish, color, supplier…), one per product or one shared file
 - **Configurable file types**: name, extensions, one or more folders (all types can share one folder) and exact or prefix name matching
+- **English and Portuguese (Brazil)** interface: follows the system language, or pick one in Settings
 - **Offline-friendly**: if the network share drops, a red bar says so and the product list keeps working from the last scan
 
 ## Requirements
@@ -40,6 +43,8 @@ Made for the shop floor: one portable `.exe`, no install, no database, no accoun
 | Part file, exact match | `ABC-110.dxf` | name = part code |
 | Part file, prefix match | `ABC-110 - Leg.pdf`, `ABC-110_rev2.pdf` | name starts with the code followed by a separator. `ABC-1100.pdf` does **not** match `ABC-110` |
 
+With prefix matching, a file is not shown as a revision of a part when its name is the code of another part of the same product: in a BOM that has both `ABC-110` and `ABC-110-01`, the file `ABC-110-01.pdf` belongs to `ABC-110-01` only.
+
 The product row at the top of the tree uses the product code, so a full-product drawing named `ABC-100 - Side table.pdf` shows up there.
 
 ### Columns
@@ -49,7 +54,7 @@ The BOM header row is found automatically (title lines above it are fine). Colum
 | Field | Default names |
 |---|---|
 | Item | `ITEM NO`, `ITEM`, `Nº DO ITEM` … |
-| Code | `PART NUMBER`, `PART NO`, `CODE`, `CÓDIGO` … |
+| Code | `PART NUMBER`, `PART NO`, `CODE`, `CÓDIGO`, `Nº DA PEÇA` … |
 | Description | `DESCRIPTION`, `DESCRIÇÃO` … |
 | Quantity | `QTY`, `QUANTITY`, `QTD` … |
 
@@ -78,7 +83,7 @@ For development on any OS: `go run . -no-window -port 8080` and open `http://127
 EngTree Viewer:
 
 - only **reads** the folders you set in Settings and never writes to them;
-- runs a local server bound to `127.0.0.1` (not reachable from other computers) and serves files only from those folders;
+- runs a local server bound to `127.0.0.1` (not reachable from other computers), serves files only from those folders and refuses requests coming from other web sites;
 - sends **nothing** over the internet and has **no telemetry or data collection**. The only network access is to your own folders. "Report a problem" just opens this project's GitHub page in your browser.
 
 ## Limitations
