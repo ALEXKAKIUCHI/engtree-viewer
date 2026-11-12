@@ -16,12 +16,13 @@ ui/index.html                                   Go server
 | File | Role |
 |---|---|
 | `main.go` | Product list, routes, folder reachability, path safety, window launch, auto exit |
-| `config.go` | Settings (`engtree.json`), defaults, portable mode |
+| `config.go` | Settings (`engtree.json`), defaults, portable mode, shared settings file, modes |
 | `sheets.go` | Reads .csv/.txt (delimiter and encoding detection) and dispatches .xlsx |
 | `xlsx.go` | Minimal .xlsx reader (first sheet) |
 | `bom.go` | Product discovery from file names, header matching, details join, tree building |
 | `files.go` | Directory cache, file-type index (exact / prefix keys), attachments, ZIP packages |
-| `parts.go` | Parts index built from all BOMs (per-BOM cache by modification time), Parts tab routes |
+| `parts.go` | Parts index built from all BOMs (per-BOM cache by modification time, read in parallel), Parts tab routes |
+| `revisions.go` | Revision requests: one JSON file each in a shared folder, status, export |
 | `cad.go` | DXF (2D) and IGES (3D curves and trimmed faces) parsing |
 | `taskbar_windows.go` | Own taskbar identity/icon for the browser window |
 | `ui/index.html` | The whole interface |
@@ -34,6 +35,27 @@ For each file type, an index `key -> files` is built from the folder listings (c
 
 All UI text lives in the `I18N` table at the top of the script in `ui/index.html` (`en`, `pt-BR`). The server sends warning codes, not sentences. To add a language, add a block to `I18N` and an option to the language select.
 
+## Settings: local and shared
+
+`Config` holds both this computer's settings (language, mode, column layout,
+last requester) and the shared ones (folders, columns, file types). When
+`shared_config` points at an `engtree.json` on the network, `applyShared`
+overwrites only the shared half with what that file says, and a copy is cached
+locally for when the network is down. The local file is written without the
+shared half, so a copy of it is never mistaken for the settings themselves.
+Saving writes back to the shared file only from an engineering computer, when
+the file is writable.
+
+## Revisions
+
+One JSON file per request in `revisions_folder`, named `rev_<id>.json`. Two
+computers never write the same file, which is what makes a plain network share
+enough: no locking, no server. Closing rewrites that one file. A request's
+status is worked out when read: `closed` when engineering closed it,
+`updated` when the part's main file is newer than it was when the request was
+made (the drawing was replaced), otherwise `open`. The folder listing is
+cached for 15 s and invalidated after every write.
+
 ## API
 
 | Route | Notes |
@@ -41,7 +63,13 @@ All UI text lives in the `I18N` table at the top of the script in `ui/index.html
 | `GET /api/status` | configured, folder online, scanning |
 | `GET /api/products?q=&sort=code\|desc\|date&asc=` | product list |
 | `GET /api/refresh` | rescan the BOM folder |
-| `GET/POST /api/config`, `GET /api/default_config` | settings |
+| `GET/POST /api/config`, `GET /api/default_config` | settings; the answer carries the shared-file state |
+| `POST /api/mode?mode=` | production or engineering, this computer only |
+| `GET/POST /api/column_layout` | column order and widths per list |
+| `GET /api/revisions/state` | what the alert, the flag and the legend show |
+| `GET /api/revisions?code=&scope=item\|product` | history |
+| `POST /api/revisions/new`, `POST /api/revisions/close` | ask and settle |
+| `GET /api/revisions/export?lang=` | spreadsheet of every request |
 | `GET /api/product?code=` | BOM tree of a product, or a part with its sub-tree, with per-node file availability |
 | `GET /api/parts`, `GET /api/parts_facets`, `GET /api/item_zip?code=&type=` | Parts tab list and filters; ZIP of one code's files |
 | `GET /api/item_files?code=` | files per type for one code |

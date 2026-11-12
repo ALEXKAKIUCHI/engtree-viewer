@@ -1,0 +1,23 @@
+{
+  "language": "pt-BR",
+  "mode": "production",
+  "shared_config": "",
+
+  "bom_folder": "\\\\server\\engineering\\BOM",
+  "bom_prefix": "BOM - ",
+  "name_separator": " - ",
+  "products_folder": "",
+  "details_prefix": "PARTS - ",
+  "details_file": "",
+  "ref_folder": "",
+  "revisions_folder": "",
+  "parts_columns": ["Material", "Finish"],
+  "hidden_columns": [],
+
+  "file_types": [
+    { "name": "PDF",  "extensions": [".pdf"],           "folders": ["\\\\server\\engineering\\Drawings"], "match": "prefix" },
+    { "name": "DXF",  "extensions": [".dxf"],           "folders": ["\\\\server\\engineering\\Cutting\\DXF"], "match": "exact" },
+    { "name": "IGES", "extensions": [".igs", ".iges"],  "folders": ["\\\\server\\engineering\\Cutting\\IGES"], "match": "exact" },
+    { "name": "CNC",  "extensions": [".mpr", ".nc"],    "folders": ["\\\\server\\engineering\\Cutting\\CNC"], "match": "prefix", "list": true }
+  ]
+}

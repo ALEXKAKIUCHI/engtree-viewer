@@ -19,6 +19,7 @@ type Product struct {
 	DetailsMtime float64  `json:"details_mtime,omitempty"`
 	Files        []string `json:"files"` // file types found for the product or its parts
 	Refs         int      `json:"refs"`  // number of attachments
+	NoBom        bool     `json:"no_bom,omitempty"`
 }
 
 // TreeNode is one BOM line. Values line up with BomResult.Columns.
@@ -28,7 +29,8 @@ type TreeNode struct {
 	Desc     string      `json:"desc"`
 	Qty      string      `json:"qty"`
 	Values   []string    `json:"values"`
-	Files    []string    `json:"files"` // names of the file types found for this code
+	Files    []string    `json:"files"`             // names of the file types found for this code
+	Missing  bool        `json:"missing,omitempty"` // had files before, has none now
 	Children []*TreeNode `json:"children"`
 }
 
@@ -221,7 +223,27 @@ func scanProducts(cfg Config) []Product {
 		}
 	}
 
-	list := make([]Product, 0, len(boms))
+	// Products with no BOM spreadsheet: a folder of whole-product drawings.
+	// They have files but no tree. A code that has a BOM wins.
+	extra := map[string]Product{}
+	for _, e := range scanDirCached(cfg.ProductsFolder) {
+		if strings.HasPrefix(e.Name, "~$") || strings.HasPrefix(e.Name, ".") {
+			continue
+		}
+		code, desc := splitName(e.Name, "", cfg.NameSeparator)
+		key := strings.ToUpper(code)
+		if code == "" || boms[key].Name != "" {
+			continue
+		}
+		if prev, ok := extra[key]; !ok || e.Mtime > prev.Mtime {
+			extra[key] = Product{Code: code, Description: desc, Mtime: e.Mtime, NoBom: true, Files: []string{}}
+		}
+	}
+
+	list := make([]Product, 0, len(boms)+len(extra))
+	for _, p := range extra {
+		list = append(list, p)
+	}
 	for key, e := range boms {
 		code, desc := splitName(e.Name, cfg.BomPrefix, cfg.NameSeparator)
 		list = append(list, Product{
@@ -280,6 +302,9 @@ func readDetails(path string, cfg Config) *detailsTable {
 
 func buildBom(p Product, cfg Config) BomResult {
 	res := BomResult{Columns: []string{}, Tree: []*TreeNode{}, Warnings: []string{}}
+	if p.BomFile == "" {
+		return res // a product with no BOM: files only, no tree
+	}
 	rows := readTable(p.BomFile)
 	if len(rows) == 0 {
 		res.Warnings = append(res.Warnings, "bom_unreadable")

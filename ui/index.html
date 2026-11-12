@@ -90,6 +90,46 @@
   .ft-table input { width: 100%; }
   .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
   a { color: #7cb7ff; cursor: pointer; }
+
+  /* A list behaves like a list, not like a web page: dragging across rows
+     selects rows, never text. Text stays selectable where it is content. */
+  body { user-select: none; -webkit-user-select: none; }
+  .stage pre, input, select, textarea, .pick { user-select: text; -webkit-user-select: text; }
+
+  table.grid { table-layout: fixed; }
+  table.grid td, table.grid th { overflow: hidden; text-overflow: ellipsis; }
+  th { position: relative; }
+  th .rz { position: absolute; top: 0; right: 0; width: 6px; height: 100%; cursor: col-resize; }
+  th.dragging { opacity: .4; }
+  th.dropzone { box-shadow: inset 3px 0 0 #4a9eff; }
+
+  tr.rev td { color: #ff7a7a; }
+  tr.rev.sel td { color: #ffe3e3; }
+  tr.gone td { color: #8a8f9e; font-style: italic; }
+  .legend { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+  .legend span { display: flex; align-items: center; gap: 5px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+
+  .ctx { position: fixed; z-index: 100; background: #262636; border: 1px solid #4a5068;
+         border-radius: 6px; padding: 4px; min-width: 200px; box-shadow: 0 10px 28px rgba(0,0,0,.55); }
+  .ctx .it { padding: 6px 12px; border-radius: 4px; cursor: pointer; white-space: nowrap; }
+  .ctx .it:hover { background: #4a9eff; color: #fff; }
+  .ctx .it.dis { opacity: .35; pointer-events: none; }
+  .ctx .grp { padding: 6px 12px 2px; font-size: 8.5pt; color: #8b90a0; }
+  .ctx hr { border: 0; border-top: 1px solid #3a3a4e; margin: 4px 2px; }
+
+  .rev-list { max-height: 50vh; overflow: auto; margin-top: 8px; }
+  .rev-item { padding: 8px 10px; border: 1px solid #3a3a4e; border-radius: 6px; margin-bottom: 6px; }
+  .rev-item.open { border-left: 3px solid #ff7a7a; }
+  .rev-item.closed { border-left: 3px solid #10b981; }
+  .rev-item.updated { border-left: 3px solid #f59e0b; }
+  .rev-item .who { color: #9aa0b0; font-size: 9pt; margin-top: 2px; }
+  .rev-item b { cursor: pointer; }
+  textarea { width: 100%; background: #2a2a3e; border: 1px solid #3a3a4e; border-radius: 5px;
+             color: #fff; padding: 6px 8px; font-family: inherit; resize: vertical; }
+  .req { color: #ff9f9f; }
+  .warnbox { background: #3b2f0b; border: 1px solid #a16207; color: #fde68a; padding: 6px 10px;
+             border-radius: 5px; font-size: 9pt; margin: 8px 0; }
 </style>
 </head>
 <body>
@@ -98,8 +138,11 @@
 <div class="menubar">
   <div class="brand"><img src="/assets/icon_256.png" alt="">EngTree Viewer</div>
   <span class="menu-item" onclick="refreshList()">⟳ <span data-i18n="refresh"></span></span>
+  <span class="menu-item" id="rev-btn" onclick="openRevPanel()" style="display:none"></span>
   <span class="menu-item" onclick="openSettings()">⚙ <span data-i18n="settings"></span></span>
   <span class="menu-item" onclick="openAbout()">ⓘ <span data-i18n="about"></span></span>
+  <span class="grow"></span>
+  <span class="muted" id="mode-label"></span>
 </div>
 
 <div class="tabbar" id="tabbar">
@@ -113,18 +156,12 @@
       <div class="row">
         <input id="q" class="grow" data-i18n-ph="search_ph" oninput="debounce(loadProducts, 200)()" autofocus>
       </div>
-      <div class="table-wrap">
-        <table id="products">
-          <thead><tr>
-            <th class="sortable" onclick="sortBy('code')" id="h-code"></th>
-            <th class="sortable" onclick="sortBy('desc')" id="h-desc"></th>
-            <th class="sortable" onclick="sortBy('date')" id="h-date"></th>
-            <th data-i18n="col_files"></th>
-          </tr></thead>
-          <tbody></tbody>
-        </table>
+      <div class="table-wrap" id="products-wrap"></div>
+      <div class="row">
+        <div class="muted" id="list-status"></div>
+        <span class="grow"></span>
+        <div class="muted legend" id="legend"></div>
       </div>
-      <div class="muted" id="list-status"></div>
     </div>
   </div>
   <div class="pane" id="pane-parts">
@@ -133,9 +170,7 @@
         <input id="pq" class="grow" style="min-width: 240px" data-i18n-ph="parts_search_ph" oninput="debounce(loadParts, 250)()">
         <span class="row" id="parts-filters" style="flex-wrap: wrap"></span>
       </div>
-      <div class="table-wrap">
-        <table id="parts"><thead><tr id="parts-head"></tr></thead><tbody></tbody></table>
-      </div>
+      <div class="table-wrap" id="parts-wrap"></div>
       <div class="muted" id="parts-status"></div>
     </div>
   </div>
@@ -145,12 +180,24 @@
 <div class="modal-bg" id="settings">
   <div class="modal">
     <h2 data-i18n="settings"></h2>
-    <div class="field" style="max-width:260px"><label data-i18n="s_lang"></label>
-      <select id="s-lang" style="width:100%">
-        <option value="" data-i18n="s_lang_auto"></option>
-        <option value="en">English</option>
-        <option value="pt-BR">Português (Brasil)</option>
-      </select></div>
+    <h3 data-i18n="s_mode_h"></h3>
+    <div class="grid2">
+      <div class="field"><label data-i18n="s_lang"></label>
+        <select id="s-lang" style="width:100%">
+          <option value="" data-i18n="s_lang_auto"></option>
+          <option value="en">English</option>
+          <option value="pt-BR">Português (Brasil)</option>
+        </select></div>
+      <div class="field"><label data-i18n="mode"></label>
+        <select id="s-mode" style="width:100%">
+          <option value="production" data-i18n="mode_production"></option>
+          <option value="engineering" data-i18n="mode_engineering"></option>
+        </select>
+        <div class="hint" data-i18n="mode_hint"></div></div>
+      <div class="field" style="grid-column: span 2"><label data-i18n="s_shared"></label><input id="s-shared">
+        <div class="hint" data-i18n="s_shared_hint"></div></div>
+    </div>
+    <div id="shared-note"></div>
     <h3 data-i18n="s_bom_h"></h3>
     <div class="grid2">
       <div class="field" style="grid-column: span 2"><label data-i18n="s_bom_folder"></label><input id="s-bom-folder" data-i18n-ph="s_bom_folder_ph">
@@ -161,8 +208,12 @@
       <div class="field"><label data-i18n="s_det_prefix"></label><input id="s-det-prefix" data-i18n-ph="s_det_prefix_ph">
         <div class="hint" data-i18n="s_det_prefix_hint"></div></div>
       <div class="field"><label data-i18n="s_det_file"></label><input id="s-det-file" data-i18n-ph="s_det_file_ph"></div>
+      <div class="field" style="grid-column: span 2"><label data-i18n="s_products_folder"></label><input id="s-products-folder">
+        <div class="hint" data-i18n="s_products_hint"></div></div>
       <div class="field" style="grid-column: span 2"><label>📎 <span data-i18n="s_ref_folder"></span></label><input id="s-ref-folder">
         <div class="hint" data-i18n="s_ref_hint"></div></div>
+      <div class="field" style="grid-column: span 2"><label data-i18n="s_rev_folder"></label><input id="s-rev-folder">
+        <div class="hint" data-i18n="s_rev_hint"></div></div>
     </div>
     <h3 data-i18n="s_cols_h"></h3>
     <div class="muted" style="margin-bottom:6px" data-i18n="s_cols_hint"></div>
@@ -190,6 +241,57 @@
   </div>
 </div>
 
+<!-- Revisions: pending list and export -->
+<div class="modal-bg" id="revpanel">
+  <div class="modal" style="width:680px">
+    <h2 data-i18n="rev_pending"></h2>
+    <div id="revpanel-body"></div>
+    <div class="modal-actions">
+      <button id="btn-export" onclick="exportRevisions()" style="margin-right:auto" data-i18n="rev_export"></button>
+      <button onclick="closeModal('revpanel')" data-i18n="close"></button>
+    </div>
+  </div>
+</div>
+
+<!-- Revisions: history of one item or product -->
+<div class="modal-bg" id="revhist">
+  <div class="modal" style="width:680px">
+    <h2 id="revhist-title"></h2>
+    <div id="revhist-body"></div>
+    <div class="modal-actions"><button onclick="closeModal('revhist')" data-i18n="close"></button></div>
+  </div>
+</div>
+
+<!-- Revisions: new request -->
+<div class="modal-bg" id="revnew">
+  <div class="modal" style="width:560px">
+    <h2 id="revnew-title"></h2>
+    <div class="field"><label data-i18n="rev_requester"></label><input id="rv-who"></div>
+    <div class="field" style="margin-top:8px"><label data-i18n="rev_type"></label>
+      <select id="rv-kind" style="width:100%" onchange="revKindChanged()"></select></div>
+    <div class="field" style="margin-top:8px"><label id="rv-note-label"></label><textarea id="rv-note" rows="3"></textarea></div>
+    <div class="field" style="margin-top:8px"><label data-i18n="rev_assignee"></label><input id="rv-to"></div>
+    <div class="modal-actions">
+      <button onclick="closeModal('revnew')" data-i18n="cancel"></button>
+      <button class="primary" onclick="submitRevision()" data-i18n="rev_send"></button>
+    </div>
+  </div>
+</div>
+
+<!-- Revisions: close one -->
+<div class="modal-bg" id="revclose">
+  <div class="modal" style="width:560px">
+    <h2 id="revclose-title"></h2>
+    <div id="revclose-body"></div>
+    <div class="field" style="margin-top:8px"><label data-i18n="rev_answer"></label><textarea id="rc-answer" rows="3"></textarea></div>
+    <div class="field" style="margin-top:8px"><label data-i18n="rev_closed_by"></label><input id="rc-by"></div>
+    <div class="modal-actions">
+      <button onclick="closeModal('revclose')" data-i18n="cancel"></button>
+      <button class="primary" onclick="submitClose()" data-i18n="rev_close"></button>
+    </div>
+  </div>
+</div>
+
 <!-- About -->
 <div class="modal-bg" id="about">
   <div class="modal" style="width:520px">
@@ -197,16 +299,46 @@
     <p data-i18n="ab_desc"></p>
     <p class="muted" data-i18n="ab_free"></p>
     <p><b data-i18n="ab_privacy_h"></b> <span data-i18n="ab_privacy"></span></p>
-    <p class="muted"><span data-i18n="ab_cfg"></span> <span id="ab-cfg"></span></p>
+    <p class="muted"><span data-i18n="ab_cfg"></span> <span id="ab-cfg" class="pick"></span></p>
     <p><a onclick="openRepo('')" data-i18n="ab_page"></a> · <a onclick="openRepo('/issues/new')" data-i18n="ab_report"></a></p>
     <div class="modal-actions"><button onclick="closeModal('about')" data-i18n="close"></button></div>
   </div>
 </div>
 
+<div id="toast" style="position:fixed; bottom:18px; left:50%; transform:translateX(-50%); background:#10b981; color:#fff; padding:8px 16px; border-radius:6px; display:none; z-index:200"></div>
+
 <script>
 // ---------- languages ----------
 const I18N = {
   en: {
+    mode: 'Mode', mode_production: 'Production', mode_engineering: 'Engineering',
+    mode_hint: 'The mode belongs to this computer. Production can ask for revisions; engineering also closes them.',
+    revisions: 'Revisions', rev_pending: 'Pending revisions', rev_pending_n: 'Revisions ({0})',
+    rev_none: 'No open revisions.', rev_off: 'Revisions are off: no revisions folder set in Settings.',
+    rev_offline: 'Revisions folder not reachable. Asking for a revision is unavailable until the network is back.',
+    rev_request: 'Request a revision…', rev_request_for: 'Request a revision — {0}',
+    rev_requester: 'Your name', rev_type: 'What is wrong', rev_note: 'Details', rev_note_opt: 'Details (optional)',
+    rev_assignee: 'Assign to (optional)', rev_send: 'Send request', rev_sent: 'Request sent.',
+    rev_kind_measure: 'Wrong measurement', rev_kind_missing_info: 'Missing dimension or information',
+    rev_kind_material: 'Material or finish', rev_kind_file: 'Wrong or missing file', rev_kind_other: 'Other',
+    rev_history: 'Revision history…', rev_history_for: 'Revisions — {0}', rev_history_none: 'No revisions for this item.',
+    rev_close: 'Close revision…', rev_close_for: 'Close revision — {0}', rev_answer: 'Answer (short)',
+    rev_closed_by: 'Closed by', rev_export: 'Export revisions', rev_whole_product: 'Whole product',
+    rev_status_open: 'Open', rev_status_updated: 'Settled (file replaced)', rev_status_closed: 'Settled',
+    rev_asked_by: '{0} · {1}', rev_assigned: 'for {0}',
+    legend: 'Colours:', legend_rev: 'open revision', legend_gone: 'files deleted or moved',
+    ctx_open: 'Open', ctx_copy_code: 'Copy code', ctx_copy_desc: 'Copy description',
+    ctx_copy_both: 'Copy code and description', ctx_open_file: 'Open file', ctx_show_folder: 'Show in folder',
+    ctx_zip_type: 'ZIP of every {0}', ctx_zip_item: "ZIP of this item's files", ctx_restore_cols: 'Restore columns',
+    copied: 'Copied.', no_file_for: 'No file found for {0}.',
+    s_mode_h: 'This computer', s_shared: 'Shared settings file (optional)',
+    s_shared_hint: 'An engtree.json on the network with the settings below. Engineering sets the folders once and every computer follows.',
+    s_shared_locked: 'These settings come from the shared file and are changed on an engineering computer.',
+    s_shared_offline: 'Shared settings file not reachable: using the last copy read.',
+    s_products_folder: 'Folder of products without a BOM (optional)',
+    s_products_hint: 'Files here become products with their files but no tree, when no BOM has that code.',
+    s_rev_folder: 'Revisions folder (optional)',
+    s_rev_hint: 'The only folder EngTree writes to: one small file per revision request, shared by every computer.',
     offline_bar: '⚠ BOM folder not reachable (network or VPN down?). The product list shows the last saved data.',
     products: 'Products', refresh: 'Refresh', settings: 'Settings', about: 'About',
     search_ph: 'Search by code or description…',
@@ -274,6 +406,34 @@ const I18N = {
     ab_cfg: 'Settings file:', ab_page: 'Project page', ab_report: 'Report a problem or suggest an improvement'
   },
   'pt-BR': {
+    mode: 'Modo', mode_production: 'Produção', mode_engineering: 'Engenharia',
+    mode_hint: 'O modo é deste computador. A produção pede revisões; a engenharia também encerra.',
+    revisions: 'Revisões', rev_pending: 'Revisões pendentes', rev_pending_n: 'Revisões ({0})',
+    rev_none: 'Nenhuma revisão aberta.', rev_off: 'Revisões desligadas: falta a pasta de revisões nas Configurações.',
+    rev_offline: 'Pasta de revisões inacessível. Não dá para pedir revisão até a rede voltar.',
+    rev_request: 'Solicitar revisão…', rev_request_for: 'Solicitar revisão — {0}',
+    rev_requester: 'Seu nome', rev_type: 'O que está errado', rev_note: 'Descrição', rev_note_opt: 'Descrição (opcional)',
+    rev_assignee: 'Responsável (opcional)', rev_send: 'Enviar solicitação', rev_sent: 'Solicitação enviada.',
+    rev_kind_measure: 'Medida errada', rev_kind_missing_info: 'Falta cota ou informação',
+    rev_kind_material: 'Material ou acabamento', rev_kind_file: 'Arquivo errado ou faltando', rev_kind_other: 'Outro',
+    rev_history: 'Ver histórico de revisões…', rev_history_for: 'Revisões — {0}', rev_history_none: 'Nenhuma revisão para este item.',
+    rev_close: 'Encerrar revisão…', rev_close_for: 'Encerrar revisão — {0}', rev_answer: 'Resposta (curta)',
+    rev_closed_by: 'Encerrada por', rev_export: 'Exportar revisões', rev_whole_product: 'Produto inteiro',
+    rev_status_open: 'Aberta', rev_status_updated: 'Sanada (arquivo substituído)', rev_status_closed: 'Sanada',
+    rev_asked_by: '{0} · {1}', rev_assigned: 'para {0}',
+    legend: 'Cores:', legend_rev: 'revisão aberta', legend_gone: 'arquivos apagados ou movidos',
+    ctx_open: 'Abrir', ctx_copy_code: 'Copiar código', ctx_copy_desc: 'Copiar descrição',
+    ctx_copy_both: 'Copiar código e descrição', ctx_open_file: 'Abrir arquivo', ctx_show_folder: 'Mostrar na pasta',
+    ctx_zip_type: 'ZIP de todos os {0}', ctx_zip_item: 'ZIP dos arquivos deste item', ctx_restore_cols: 'Restaurar colunas',
+    copied: 'Copiado.', no_file_for: 'Nenhum arquivo encontrado para {0}.',
+    s_mode_h: 'Este computador', s_shared: 'Arquivo de configurações compartilhado (opcional)',
+    s_shared_hint: 'Um engtree.json na rede com as configurações abaixo. A engenharia configura as pastas uma vez e todos os computadores seguem.',
+    s_shared_locked: 'Estas configurações vêm do arquivo compartilhado e são alteradas num computador em modo Engenharia.',
+    s_shared_offline: 'Arquivo compartilhado inacessível: usando a última cópia lida.',
+    s_products_folder: 'Pasta de produtos sem BOM (opcional)',
+    s_products_hint: 'Os arquivos daqui viram produtos, com os arquivos mas sem árvore, quando nenhuma BOM tem aquele código.',
+    s_rev_folder: 'Pasta de revisões (opcional)',
+    s_rev_hint: 'A única pasta em que o EngTree grava: um arquivo pequeno por pedido de revisão, compartilhado por todos os computadores.',
     offline_bar: '⚠ Pasta de BOM inacessível (rede ou VPN caiu?). A lista de produtos mostra os últimos dados salvos.',
     products: 'Produtos', refresh: 'Atualizar', settings: 'Configurações', about: 'Sobre',
     search_ph: 'Buscar por código ou descrição…',
@@ -356,52 +516,295 @@ function applyI18n(root) {
   root.querySelectorAll('[data-i18n-title]').forEach(e => e.title = t(e.dataset.i18nTitle));
 }
 
+const REV_KINDS = ['measure', 'missing_info', 'material', 'file', 'other'];
+
+// ---------- state ----------
 const openTabs = {};
 const tabOfCode = {};
 let tabSeq = 0;
 let sortCol = 'code', sortAsc = true, lastOnline = true, cfgCache = null, configured = true;
+let LAYOUT = {};                 // column order and widths, saved on the server
+let rev = { enabled: false, online: false, engineering: false, requester: '', open: [] };
+let openCodes = {};              // CODE -> number of open revisions
+let alertShown = false;
+const productRows = [], partRows = [];   // what each list is showing now
+let homeSel = -1, partsSel = -1;
 
 // ---------- helpers ----------
 function esc(v) { return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function debounce(fn, ms) { return () => { clearTimeout(fn._t); fn._t = setTimeout(fn, ms); }; }
 function fmtDate(s) { if (!s) return ''; const d = new Date(s * 1000); return d.toLocaleDateString(lang) + ' ' + d.toLocaleTimeString(lang, {hour:'2-digit', minute:'2-digit'}); }
+function fmtWhen(iso) { if (!iso) return ''; const d = new Date(iso); return d.toLocaleDateString(lang) + ' ' + d.toLocaleTimeString(lang, {hour:'2-digit', minute:'2-digit'}); }
 function fmtSize(n) { return n > 1048576 ? (n/1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n/1024)) + ' KB'; }
 function fileUrl(p, dl) { return '/api/file?path=' + encodeURIComponent(p) + (dl ? '&download=1' : ''); }
 function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+function showModal(id) { document.getElementById(id).style.display = 'flex'; }
+function hasOpenRev(code) { return !!openCodes[String(code || '').toUpperCase()]; }
 
-// ---------- status / lists ----------
-let listCount = '', scanText = '';
-function showListStatus() {
-  const txt = [listCount, scanText].filter(Boolean).join(' · ');
-  document.getElementById('list-status').innerText = txt;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.style.display = 'block';
+  clearTimeout(toast._t); toast._t = setTimeout(() => el.style.display = 'none', 2200);
+}
+
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); }
+  catch (e) {
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); } catch (e2) {}
+    ta.remove();
+  }
+  toast(t('copied'));
+}
+
+// ---------- columns: order and width, saved per list ----------
+function colsFor(listKey, cols) {
+  const order = (LAYOUT[listKey] || {}).order;
+  if (!order || !order.length) return cols;
+  const at = k => { const i = order.indexOf(k); return i < 0 ? 999 : i; };
+  return cols.map((c, i) => [c, i]).sort((a, b) => (at(a[0].key) - at(b[0].key)) || (a[1] - b[1])).map(x => x[0]);
+}
+function widthFor(listKey, c) {
+  const w = ((LAYOUT[listKey] || {}).widths || {})[c.key];
+  return w || c.w || 140;
+}
+function gridHtml(listKey, cols, rows, cellFn, rowAttrFn, sortKey, asc) {
+  cols = colsFor(listKey, cols);
+  const cg = cols.map(c => `<col style="width:${widthFor(listKey, c)}px">`).join('');
+  const th = cols.map(c => `<th draggable="true" data-k="${esc(c.key)}"${c.sort ? ` class="sortable" data-sort="${esc(c.sort)}"` : ''}>` +
+    esc(c.label) + (c.sort && c.sort === sortKey ? (asc ? ' ▲' : ' ▼') : '') + `<div class="rz"></div></th>`).join('');
+  const body = rows.map((r, i) => `<tr ${rowAttrFn(r, i)}>` + cols.map(c => `<td>${cellFn(r, c.key)}</td>`).join('') + '</tr>').join('');
+  return `<table class="grid" data-list="${esc(listKey)}"><colgroup>${cg}</colgroup>` +
+    `<thead><tr>${th}</tr></thead><tbody>${body || ''}</tbody></table>`;
+}
+function emptyRow(cols, text) {
+  return `<tr class="msg"><td colspan="${cols}" class="empty" style="white-space:normal">${text}</td></tr>`;
+}
+
+async function saveLayout(listKey) {
+  await fetch('/api/column_layout', { method: 'POST', body: JSON.stringify({ [listKey]: LAYOUT[listKey] || {} }) });
+}
+function redrawList(listKey) {
+  if (listKey === 'products') loadProducts();
+  else if (listKey === 'parts') loadParts();
+  else Object.keys(openTabs).forEach(renderTree);
+}
+async function restoreColumns(listKey) {
+  delete LAYOUT[listKey];
+  await fetch('/api/column_layout', { method: 'POST', body: JSON.stringify({ [listKey]: {} }) });
+  redrawList(listKey);
+}
+
+// Dragging the edge of a header resizes; dragging the header moves it.
+document.addEventListener('mousedown', e => {
+  const rz = e.target.closest('.rz');
+  if (!rz) return;
+  e.preventDefault();
+  const th = rz.parentElement, table = th.closest('table.grid');
+  const listKey = table.dataset.list, idx = [...th.parentElement.children].indexOf(th);
+  const col = table.querySelectorAll('colgroup col')[idx];
+  const startX = e.clientX, startW = th.offsetWidth;
+  document.body.style.pointerEvents = 'none';
+  const move = ev => { col.style.width = Math.max(50, startW + ev.clientX - startX) + 'px'; };
+  const up = () => {
+    document.body.style.pointerEvents = '';
+    window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up);
+    LAYOUT[listKey] = LAYOUT[listKey] || {};
+    LAYOUT[listKey].widths = LAYOUT[listKey].widths || {};
+    LAYOUT[listKey].widths[th.dataset.k] = parseInt(col.style.width, 10);
+    saveLayout(listKey);
+  };
+  window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
+});
+
+let dragTh = null;
+document.addEventListener('dragstart', e => {
+  const th = e.target.closest && e.target.closest('th[data-k]');
+  if (!th) return;
+  dragTh = th; th.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+  try { e.dataTransfer.setData('text/plain', th.dataset.k); } catch (err) {}
+});
+document.addEventListener('dragover', e => {
+  const th = e.target.closest && e.target.closest('th[data-k]');
+  if (!th || !dragTh || th.closest('table') !== dragTh.closest('table')) return;
+  e.preventDefault();
+  document.querySelectorAll('th.dropzone').forEach(x => x.classList.remove('dropzone'));
+  th.classList.add('dropzone');
+});
+document.addEventListener('drop', e => {
+  const th = e.target.closest && e.target.closest('th[data-k]');
+  document.querySelectorAll('th.dropzone').forEach(x => x.classList.remove('dropzone'));
+  if (!th || !dragTh || th === dragTh || th.closest('table') !== dragTh.closest('table')) return;
+  e.preventDefault();
+  const table = th.closest('table.grid'), listKey = table.dataset.list;
+  const keys = [...table.querySelectorAll('thead th')].map(x => x.dataset.k);
+  const from = keys.indexOf(dragTh.dataset.k);
+  keys.splice(from, 1);
+  keys.splice(keys.indexOf(th.dataset.k) + (from < keys.indexOf(th.dataset.k) ? 1 : 0), 0, dragTh.dataset.k);
+  LAYOUT[listKey] = LAYOUT[listKey] || {};
+  LAYOUT[listKey].order = keys;
+  saveLayout(listKey).then(() => redrawList(listKey));
+});
+document.addEventListener('dragend', () => {
+  if (dragTh) dragTh.classList.remove('dragging');
+  dragTh = null;
+  document.querySelectorAll('th.dropzone').forEach(x => x.classList.remove('dropzone'));
+});
+document.addEventListener('click', e => {
+  const th = e.target.closest && e.target.closest('th[data-sort]');
+  if (!th || e.target.closest('.rz')) return;
+  const listKey = th.closest('table.grid').dataset.list;
+  if (listKey === 'products') sortBy(th.dataset.sort);
+  else if (listKey === 'parts') sortParts(th.dataset.sort);
+});
+
+// ---------- context menu ----------
+let ctxAt = 0;
+function hideCtx() { document.querySelectorAll('.ctx').forEach(m => m.remove()); }
+document.addEventListener('click', hideCtx);
+// Selecting a row scrolls it into view right after the menu opens, so a
+// scroll in the first moments is not the user scrolling away.
+document.addEventListener('scroll', () => { if (Date.now() - ctxAt > 400) hideCtx(); }, true);
+// Not on window blur: opening a PDF next to the list steals focus for a
+// moment and would close the menu the user just asked for.
+document.addEventListener('mousedown', e => { if (!e.target.closest('.ctx')) hideCtx(); });
+
+function ctxMenu(ev, items) {
+  ev.preventDefault();
+  hideCtx();
+  const m = document.createElement('div');
+  m.className = 'ctx';
+  items.forEach((it, i) => {
+    if (it.sep) { m.appendChild(document.createElement('hr')); return; }
+    const d = document.createElement('div');
+    d.className = it.group ? 'grp' : 'it' + (it.disabled ? ' dis' : '');
+    d.textContent = it.label;
+    if (!it.group && !it.disabled) d.onclick = ev2 => { ev2.stopPropagation(); hideCtx(); it.act(); };
+    m.appendChild(d);
+  });
+  document.body.appendChild(m);
+  ctxAt = Date.now();
+  const w = m.offsetWidth, h = m.offsetHeight;
+  m.style.left = Math.min(ev.clientX, innerWidth - w - 6) + 'px';
+  m.style.top = Math.max(4, Math.min(ev.clientY, innerHeight - h - 6)) + 'px';
+}
+
+// Menu of a product, part or BOM line. files: the types it has, if known.
+function rowMenu(ev, item) {
+  const code = item.code || '', desc = item.desc || '';
+  const items = [];
+  if (item.openable !== false) items.push({ label: t('ctx_open'), act: () => openProduct(code) });
+  items.push({ sep: true });
+  items.push({ label: t('ctx_copy_code'), act: () => copyText(code) });
+  if (desc) items.push({ label: t('ctx_copy_desc'), act: () => copyText(desc) });
+  if (desc) items.push({ label: t('ctx_copy_both'), act: () => copyText(code + ' - ' + desc) });
+  items.push({ sep: true });
+  items.push({ label: t('ctx_open_file'), act: () => firstFile(code, f => fetch('/api/open_external?path=' + encodeURIComponent(f.path), { method: 'POST' })) });
+  items.push({ label: t('ctx_show_folder'), act: () => firstFile(code, f => fetch('/api/open_folder?path=' + encodeURIComponent(f.path), { method: 'POST' })) });
+  if (item.product) {
+    (item.files || []).filter(x => x !== '📎').forEach(ty =>
+      items.push({ label: t('ctx_zip_type', ty), act: () => zipOf(code, ty) }));
+  } else {
+    items.push({ label: t('ctx_zip_item'), act: () => firstType(code, ty => location.href = `/api/item_zip?code=${encodeURIComponent(code)}&type=${encodeURIComponent(ty)}`) });
+  }
+  if (rev.enabled) {
+    items.push({ sep: true });
+    items.push({ label: t('rev_request'), disabled: !rev.online, act: () => openRevNew(code, desc, item.inProduct || code) });
+    items.push({ label: t('rev_history'), act: () => openRevHistory(code, item.product ? 'product' : 'item', desc) });
+    if (rev.engineering) items.push({ label: t('rev_close'), disabled: !hasOpenRev(code) || !rev.online, act: () => openRevClose(code) });
+  }
+  ctxMenu(ev, items);
+}
+
+async function itemFiles(code) {
+  try { return await (await fetch('/api/item_files?code=' + encodeURIComponent(code))).json(); } catch (e) { return []; }
+}
+async function firstFile(code, fn) {
+  const types = await itemFiles(code);
+  const ty = types.find(x => x.files.length);
+  if (!ty) { toast(t('no_file_for', code)); return; }
+  fn(ty.files[0]);
+}
+async function firstType(code, fn) {
+  const types = await itemFiles(code);
+  const ty = types.find(x => x.files.length);
+  if (!ty) { toast(t('no_file_for', code)); return; }
+  fn(ty.type);
+}
+
+// ---------- status ----------
+let listCount = '', partsCount = '', scanText = '';
+function showStatus() {
+  document.getElementById('list-status').innerText = [listCount, scanText].filter(Boolean).join(' · ');
   document.getElementById('parts-status').innerText = [partsCount, scanText].filter(Boolean).join(' · ');
+  document.getElementById('legend').innerHTML =
+    `<span>${esc(t('legend'))}</span>` +
+    (rev.enabled ? `<span><i class="dot" style="background:#ff7a7a"></i>${esc(t('legend_rev'))}</span>` : '') +
+    `<span><i class="dot" style="background:#8a8f9e"></i>${esc(t('legend_gone'))}</span>`;
+}
+
+function showMode() {
+  document.getElementById('mode-label').innerText = t('mode') + ': ' + t(rev.engineering ? 'mode_engineering' : 'mode_production');
+  const btn = document.getElementById('rev-btn');
+  btn.style.display = rev.enabled ? '' : 'none';
+  const n = rev.open.length;
+  btn.innerHTML = '⚑ ' + esc(n ? t('rev_pending_n', n) : t('revisions'));
+  btn.style.color = n ? '#ff7a7a' : '';
 }
 
 async function pollStatus() {
-  try {
-    const s = await (await fetch('/api/status')).json();
-    configured = s.configured;
-    document.getElementById('offline').style.display = (s.configured && !s.online) ? 'block' : 'none';
-    scanText = !s.scanning ? '' : (s.phase === 'indexing' ? t('indexing', s.progress) : t('reading'));
-    if (!s.configured) {
-      if (!document.getElementById('welcome')) {
-        showEmptyList(`<span id="welcome">${esc(t('welcome'))}</span><br><br><button class="primary" onclick="openSettings()">${esc(t('open_settings'))}</button>`);
-        listCount = '';
-      }
-    } else if (s.rev !== pollStatus.rev || (!lastOnline && s.online)) {
-      pollStatus.rev = s.rev;
-      loadProducts();
-      if (partsState.loaded) { loadFacets(); loadParts(); }
+  let s;
+  try { s = await (await fetch('/api/status')).json(); } catch (e) { return; }
+  configured = s.configured;
+  document.getElementById('offline').style.display = (s.configured && !s.online) ? 'block' : 'none';
+  const codesChanged = JSON.stringify(openCodes) !== JSON.stringify(s.open_codes || {});
+  openCodes = s.open_codes || {};
+  scanText = !s.scanning ? '' : (s.phase === 'indexing' ? t('indexing', s.progress) : t('reading'));
+  if (!s.configured) {
+    if (!document.getElementById('welcome')) {
+      document.getElementById('products-wrap').innerHTML =
+        `<div class="empty"><span id="welcome">${esc(t('welcome'))}</span><br><br>` +
+        `<button class="primary" onclick="openSettings()">${esc(t('open_settings'))}</button></div>`;
+      listCount = '';
     }
-    lastOnline = s.online;
-    showListStatus();
-    // Poll faster while a scan is running so the progress is visible.
-    if (s.scanning) { clearTimeout(pollStatus.fast); pollStatus.fast = setTimeout(pollStatus, 1000); }
-  } catch (e) {}
+  } else if (s.rev !== pollStatus.rev || (!lastOnline && s.online)) {
+    pollStatus.rev = s.rev;
+    loadProducts();
+    if (partsLoaded) { loadFacets().then(loadParts); }
+  } else if (codesChanged) {
+    loadProducts();
+    if (partsLoaded) loadParts();
+    Object.keys(openTabs).forEach(renderTree);
+  }
+  lastOnline = s.online;
+  showStatus();
+  await loadRevState(s.revisions);
+  if (s.scanning) { clearTimeout(pollStatus.fast); pollStatus.fast = setTimeout(pollStatus, 1000); }
 }
 
-function showEmptyList(html) {
-  document.querySelector('#products tbody').innerHTML = `<tr class="msg"><td colspan="4" class="empty" style="white-space:normal">${html}</td></tr>`;
+async function loadRevState(enabled) {
+  if (!enabled) { rev = { enabled: false, online: false, engineering: rev.engineering, requester: '', open: [] }; showMode(); showStatus(); return; }
+  try { rev = await (await fetch('/api/revisions/state')).json(); } catch (e) { return; }
+  showMode();
+  showStatus(); // the legend only shows the red colour where revisions are on
+  // Engineering sees what is waiting for it as soon as the program opens.
+  if (!alertShown && rev.engineering && rev.open.length) { alertShown = true; openRevPanel(); }
+}
+
+// ---------- products ----------
+function productCols() {
+  return [
+    { key: 'code', label: t('col_code'), sort: 'code', w: 170 },
+    { key: 'desc', label: t('col_desc'), sort: 'desc', w: 460 },
+    { key: 'date', label: t('col_date'), sort: 'date', w: 160 },
+    { key: 'files', label: t('col_files'), w: 220 },
+  ];
+}
+function badgesHtml(files, refs) {
+  return (files || []).filter(x => x !== '📎').map(x => `<button class="pbadge" data-zip="${esc(x)}" title="${esc(t('zip_product', x))}">${esc(x)}</button>`).join('') +
+    (refs ? `<button class="pbadge clip" data-ref="1" title="${esc(t('attachments'))}">📎 ${refs === true ? '' : refs}</button>` : '');
 }
 
 function sortBy(col) {
@@ -409,75 +812,36 @@ function sortBy(col) {
   loadProducts();
 }
 
-function badgesHtml(files, refs) {
-  return (files || []).filter(x => x !== '📎').map(x => `<button class="pbadge" data-zip="${esc(x)}" title="${esc(t('zip_product', x))}">${esc(x)}</button>`).join('') +
-    (refs ? `<button class="pbadge clip" data-ref="1" title="${esc(t('attachments'))}">📎 ${refs === true ? '' : refs}</button>` : '');
-}
-
 async function loadProducts() {
-  [['code','col_code'],['desc','col_desc'],['date','col_date']].forEach(([c, k]) => {
-    document.getElementById('h-' + c).innerText = t(k) + (c === sortCol ? (sortAsc ? ' ▲' : ' ▼') : '');
-  });
   if (!configured) return;
   const q = document.getElementById('q').value;
   const seq = loadProducts.seq = (loadProducts.seq || 0) + 1;
-  const r = await fetch(`/api/products?q=${encodeURIComponent(q)}&sort=${sortCol}&asc=${sortAsc ? 1 : 0}`);
-  const list = await r.json();
+  let list;
+  try { list = await (await fetch(`/api/products?q=${encodeURIComponent(q)}&sort=${sortCol}&asc=${sortAsc ? 1 : 0}`)).json(); }
+  catch (e) { return; }
   if (seq !== loadProducts.seq) return; // a newer search is already on its way
-  if (!list.length) {
-    showEmptyList(esc(q ? t('no_match') : t('no_boms')));
-  } else {
-    document.querySelector('#products tbody').innerHTML = list.map(p =>
-      `<tr data-code="${esc(p.code)}"><td>${esc(p.code)}</td><td>${esc(p.description)}</td><td>${fmtDate(p.mtime)}</td><td>${badgesHtml(p.files, p.refs)}</td></tr>`).join('');
-  }
+  productRows.length = 0;
+  list.forEach(p => productRows.push(p));
+  const cols = productCols();
+  const cell = (p, k) => k === 'code' ? esc(p.code) : k === 'desc' ? esc(p.description)
+    : k === 'date' ? fmtDate(p.mtime) : badgesHtml(p.files, p.refs);
+  const attr = (p, i) => `data-code="${esc(p.code)}" data-i="${i}" class="${i === homeSel ? 'sel ' : ''}${hasOpenRev(p.code) ? 'rev' : ''}"`;
+  const html = gridHtml('products', cols, list, cell, attr, sortCol, sortAsc);
+  document.getElementById('products-wrap').innerHTML = list.length ? html
+    : html.replace('<tbody></tbody>', `<tbody>${emptyRow(cols.length, esc(q ? t('no_match') : t('no_boms')))}</tbody>`);
   listCount = t('n_products', list.length);
-  showListStatus();
-}
-
-// Clicks in the Products and Parts lists: select, open, download ZIP, attachments.
-async function zipOf(code, type) {
-  const url = `/api/package_zip?code=${encodeURIComponent(code)}&type=${encodeURIComponent(type)}`;
-  const r = await fetch(url, { method: 'HEAD' });
-  if (!r.ok) { alert(r.status === 503 ? t('zip_offline') : t('zip_none', type)); return; }
-  location.href = url;
-}
-for (const sel of ['#products tbody', '#parts tbody']) {
-  const tb = document.querySelector(sel);
-  tb.addEventListener('click', e => {
-    const tr = e.target.closest('tr[data-code]');
-    if (!tr) return;
-    tb.querySelectorAll('tr.sel').forEach(x => x.classList.remove('sel'));
-    tr.classList.add('sel');
-    const b = e.target.closest('button');
-    if (b && b.dataset.zip) zipOf(tr.dataset.code, b.dataset.zip);
-    else if (b && b.dataset.ref) openProduct(tr.dataset.code, '📎');
-    else if (b && b.dataset.type) openProduct(tr.dataset.code, b.dataset.type);
-  });
-  tb.addEventListener('dblclick', e => {
-    const tr = e.target.closest('tr[data-code]');
-    if (tr && !e.target.closest('button')) openProduct(tr.dataset.code);
-  });
-}
-document.getElementById('q').addEventListener('keydown', e => {
-  if (e.key !== 'Enter') return;
-  const rows = document.querySelectorAll('#products tbody tr[data-code]');
-  if (rows.length === 1) openProduct(rows[0].dataset.code);
-});
-
-async function refreshList() {
-  await fetch('/api/refresh');
-  setTimeout(pollStatus, 300);
+  showStatus();
 }
 
 // ---------- parts and assemblies ----------
-const partsState = { loaded: false, sort: 'code', asc: true, has: {}, onlyFiles: true, filters: {}, facets: { columns: [], types: [] } };
-let partsCount = '';
+const partsState = { sort: 'code', asc: true, has: {}, onlyFiles: true, filters: {}, facets: { columns: [], types: [] } };
+let partsLoaded = false;
 
 async function loadFacets() {
   try { partsState.facets = await (await fetch('/api/parts_facets')).json(); } catch (e) { return; }
   const f = partsState.facets;
   let html = f.columns.map((c, i) => `<select data-f="${i}"><option value="">${esc(t('all_values', c.name))}</option>` +
-    c.values.map(v => `<option ${partsState.filters[i] === v ? 'selected' : ''}>${esc(v)}</option>`).join('') + `</select>`).join('');
+    (c.values || []).map(v => `<option ${partsState.filters[i] === v ? 'selected' : ''}>${esc(v)}</option>`).join('') + `</select>`).join('');
   html += `<span class="muted">${esc(t('has'))}</span>` + f.types.map(x =>
     `<button data-has="${esc(x)}" class="${partsState.has[x] ? 'active' : ''}">${esc(x)}</button>`).join('');
   html += `<label class="chk"><input type="checkbox" id="only-files" ${partsState.onlyFiles ? 'checked' : ''}>${esc(t('only_files'))}</label>`;
@@ -502,13 +866,14 @@ function sortParts(col) {
 }
 
 async function loadParts() {
-  const ps = partsState, cols = ps.facets.columns;
-  const arrow = c => c === ps.sort ? (ps.asc ? ' ▲' : ' ▼') : '';
-  document.getElementById('parts-head').innerHTML =
-    `<th class="sortable" onclick="sortParts('code')">${esc(t('col_code'))}${arrow('code')}</th>
-     <th class="sortable" onclick="sortParts('desc')">${esc(t('col_desc'))}${arrow('desc')}</th>` +
-    cols.map(c => `<th>${esc(c.name)}</th>`).join('') +
-    `<th>${esc(t('col_used'))}</th><th class="sortable" onclick="sortParts('date')">${esc(t('col_date2'))}${arrow('date')}</th><th>${esc(t('col_files'))}</th>`;
+  const ps = partsState, cols = [
+    { key: 'code', label: t('col_code'), sort: 'code', w: 170 },
+    { key: 'desc', label: t('col_desc'), sort: 'desc', w: 300 },
+    ...ps.facets.columns.map(c => ({ key: 'c:' + c.name, label: c.name, w: 140 })),
+    { key: 'used', label: t('col_used'), w: 240 },
+    { key: 'date', label: t('col_date2'), sort: 'date', w: 150 },
+    { key: 'files', label: t('col_files'), w: 180 },
+  ];
   const p = new URLSearchParams({ q: document.getElementById('pq').value, sort: ps.sort, asc: ps.asc ? 1 : 0,
     has: Object.keys(ps.has).filter(k => ps.has[k]).join(','), withfiles: ps.onlyFiles ? 1 : 0 });
   Object.entries(ps.filters).forEach(([i, v]) => { if (v) p.set('f' + i, v); });
@@ -516,27 +881,113 @@ async function loadParts() {
   let d;
   try { d = await (await fetch('/api/parts?' + p)).json(); } catch (e) { return; }
   if (seq !== loadParts.seq) return;
-  const tb = document.querySelector('#parts tbody');
-  if (!d.rows.length) {
-    tb.innerHTML = `<tr class="msg"><td colspan="${5 + cols.length}" class="empty">${esc(t('parts_empty'))}</td></tr>`;
-  } else {
-    tb.innerHTML = d.rows.map(r => {
-      const used = r.used.length > 3 ? r.used.slice(0, 3).join(', ') + ` +${r.used.length - 3}` : r.used.join(', ');
-      const files = (r.files || []).map(x => x === '📎'
-        ? `<button class="pbadge clip" data-ref="1" title="${esc(t('attachments'))}">📎</button>`
-        : `<button class="pbadge" data-type="${esc(x)}">${esc(x)}</button>`).join('');
-      return `<tr data-code="${esc(r.code)}"><td>${r.assembly ? '▸ ' : ''}${esc(r.code)}</td><td>${esc(r.desc)}</td>` +
-        cols.map((_, i) => `<td>${esc((r.vals || [])[i])}</td>`).join('') +
-        `<td title="${esc(r.used.join(', '))}">${esc(used)}</td><td>${fmtDate(r.mtime)}</td><td>${files}</td></tr>`;
-    }).join('');
-  }
+  partRows.length = 0;
+  d.rows.forEach(r => partRows.push(r));
+  const cell = (r, k) => {
+    if (k === 'code') return (r.assembly ? '▸ ' : '') + esc(r.code);
+    if (k === 'desc') return esc(r.desc);
+    if (k === 'used') { const u = r.used || []; return esc(u.length > 3 ? u.slice(0, 3).join(', ') + ` +${u.length - 3}` : u.join(', ')); }
+    if (k === 'date') return fmtDate(r.mtime);
+    if (k === 'files') return (r.files || []).map(x => x === '📎'
+      ? `<button class="pbadge clip" data-ref="1" title="${esc(t('attachments'))}">📎</button>`
+      : `<button class="pbadge" data-type="${esc(x)}">${esc(x)}</button>`).join('');
+    const i = ps.facets.columns.findIndex(c => 'c:' + c.name === k);
+    return esc((r.vals || [])[i]);
+  };
+  const attr = (r, i) => `data-code="${esc(r.code)}" data-i="${i}" title="${esc((r.used || []).join(', '))}" ` +
+    `class="${i === partsSel ? 'sel ' : ''}${hasOpenRev(r.code) ? 'rev ' : ''}${r.missing ? 'gone' : ''}"`;
+  const html = gridHtml('parts', cols, d.rows, cell, attr, ps.sort, ps.asc);
+  document.getElementById('parts-wrap').innerHTML = d.rows.length ? html
+    : html.replace('<tbody></tbody>', `<tbody>${emptyRow(cols.length, esc(t('parts_empty')))}</tbody>`);
   partsCount = d.total > d.rows.length ? t('n_parts_cut', d.total, d.rows.length) : t('n_parts', d.total);
-  showListStatus();
+  showStatus();
+}
+
+// ---------- clicks in both lists ----------
+async function zipOf(code, type) {
+  const url = `/api/package_zip?code=${encodeURIComponent(code)}&type=${encodeURIComponent(type)}`;
+  const r = await fetch(url, { method: 'HEAD' });
+  if (!r.ok) { alert(r.status === 503 ? t('zip_offline') : t('zip_none', type)); return; }
+  location.href = url;
+}
+function wireList(wrapId, isProducts) {
+  const wrap = document.getElementById(wrapId);
+  // Selecting on mousedown, like a file list: dragging from a row selects
+  // that row instead of starting a text selection.
+  wrap.addEventListener('mousedown', e => {
+    const tr = e.target.closest('tr[data-code]');
+    if (tr) selectListRow(isProducts, +tr.dataset.i);
+  });
+  wrap.addEventListener('click', e => {
+    const tr = e.target.closest('tr[data-code]');
+    if (!tr) return;
+    const b = e.target.closest('button');
+    if (b && b.dataset.zip) zipOf(tr.dataset.code, b.dataset.zip);
+    else if (b && b.dataset.ref) openProduct(tr.dataset.code, '📎');
+    else if (b && b.dataset.type) openProduct(tr.dataset.code, b.dataset.type);
+  });
+  wrap.addEventListener('dblclick', e => {
+    const tr = e.target.closest('tr[data-code]');
+    if (tr && !e.target.closest('button')) openProduct(tr.dataset.code);
+  });
+  wrap.addEventListener('contextmenu', e => {
+    const th = e.target.closest('th[data-k]');
+    if (th) { ctxMenu(e, [{ label: t('ctx_restore_cols'), act: () => restoreColumns(isProducts ? 'products' : 'parts') }]); return; }
+    const tr = e.target.closest('tr[data-code]');
+    if (!tr) return;
+    selectListRow(isProducts, +tr.dataset.i);
+    const row = (isProducts ? productRows : partRows)[+tr.dataset.i] || {};
+    rowMenu(e, { code: tr.dataset.code, desc: row.description || row.desc || '', product: isProducts, files: row.files || [] });
+  });
+}
+function scrollRowIntoView(tr) {
+  const wrap = tr.closest('.table-wrap');
+  if (!wrap) return;
+  const a = tr.getBoundingClientRect(), b = wrap.getBoundingClientRect();
+  if (a.top < b.top) wrap.scrollTop -= b.top - a.top;
+  else if (a.bottom > b.bottom) wrap.scrollTop += a.bottom - b.bottom;
+}
+
+function selectListRow(isProducts, i) {
+  const wrap = document.getElementById(isProducts ? 'products-wrap' : 'parts-wrap');
+  wrap.querySelectorAll('tr.sel').forEach(x => x.classList.remove('sel'));
+  const tr = wrap.querySelector(`tr[data-i="${i}"]`);
+  if (tr) { tr.classList.add('sel'); scrollRowIntoView(tr); }
+  if (isProducts) homeSel = i; else partsSel = i;
+}
+function moveListSel(isProducts, step) {
+  const rows = isProducts ? productRows : partRows;
+  if (!rows.length) return;
+  let i = (isProducts ? homeSel : partsSel) + step;
+  i = Math.max(0, Math.min(rows.length - 1, i < 0 ? 0 : i));
+  selectListRow(isProducts, i);
+}
+wireList('products-wrap', true);
+wireList('parts-wrap', false);
+
+document.getElementById('q').addEventListener('keydown', listKeys);
+document.getElementById('pq').addEventListener('keydown', listKeys);
+function listKeys(e) {
+  const isProducts = e.target.id === 'q';
+  const rows = isProducts ? productRows : partRows;
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    moveListSel(isProducts, e.key === 'ArrowDown' ? 1 : -1);
+  } else if (e.key === 'Enter') {
+    const i = isProducts ? homeSel : partsSel;
+    if (rows[i]) openProduct(rows[i].code);
+    else if (rows.length === 1) openProduct(rows[0].code);
+  }
+}
+
+async function refreshList() {
+  await fetch('/api/refresh');
+  setTimeout(pollStatus, 300);
 }
 
 // ---------- tabs ----------
 function activateTab(id) {
-  if (id === 'parts' && !partsState.loaded) { partsState.loaded = true; loadFacets().then(loadParts); }
+  if (id === 'parts' && !partsLoaded) { partsLoaded = true; loadFacets().then(loadParts); }
   document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x.id === 'tab-btn-' + id));
   document.querySelectorAll('.pane').forEach(p => p.classList.toggle('active', p.id === 'pane-' + id));
 }
@@ -558,7 +1009,7 @@ async function openProduct(code, wantType) {
   const known = tabOfCode[code.toUpperCase()];
   if (known) {
     activateTab(known);
-    if (wantType) { openTabs[known].typeName = wantType; selectRow(known, 0); }
+    if (wantType) { openTabs[known].typeName = wantType; selectRow(known, openTabs[known].sel); }
     return;
   }
   const from = document.getElementById('pane-parts').classList.contains('active') ? 'parts' : 'home';
@@ -571,7 +1022,8 @@ async function openProduct(code, wantType) {
 
   // Flatten the tree, with the product itself as the top row.
   const rows = [];
-  const root = { item: '', code: d.product.code, desc: d.product.description, qty: '', values: d.root_values || [], files: d.product_files || [], children: d.bom.tree, isRoot: true };
+  const root = { item: '', code: d.product.code, desc: d.product.description, qty: '', values: d.root_values || [],
+    files: d.product_files || [], children: d.bom.tree, isRoot: true };
   (function flat(nodes, depth, parentKey) {
     nodes.forEach((n, i) => {
       const key = parentKey + '/' + i;
@@ -581,7 +1033,7 @@ async function openProduct(code, wantType) {
   })([root], 0, '');
 
   openTabs[id] = {
-    product: d.product, columns: d.bom.columns, rows,
+    product: d.product, columns: d.bom.columns, rows, part: d.part,
     collapsed: {}, sel: 0, mode: null, typeName: wantType || null, typeFiles: [], fileIdx: 0, from,
     zoom: 1, panX: 0, panY: 0, rotX: -0.45, rotY: 0.65, measuring: false
   };
@@ -620,6 +1072,17 @@ async function openProduct(code, wantType) {
     const b = e.target.closest('button[data-type]');
     if (b && !b.disabled) pickType(id, b.dataset.type);
   });
+  const treeEl = document.getElementById('tree-' + id);
+  treeEl.addEventListener('contextmenu', e => {
+    const th = e.target.closest('th[data-k]');
+    if (th) { ctxMenu(e, [{ label: t('ctx_restore_cols'), act: () => restoreColumns('tree') }]); return; }
+    const tr = e.target.closest('tr[data-i]');
+    if (!tr) return;
+    const st = openTabs[id], n = st.rows[+tr.dataset.i].node;
+    selectRow(id, +tr.dataset.i);
+    rowMenu(e, { code: n.code, desc: n.desc, product: !!n.isRoot && !st.part, inProduct: st.product.code,
+      files: n.files || [], openable: !n.isRoot });
+  });
   activateTab(id);
   renderTree(id);
   selectRow(id, 0);
@@ -637,29 +1100,43 @@ function isHidden(st, row) {
 
 function renderTree(id) {
   const st = openTabs[id];
-  const extra = st.columns.map(c => `<th>${esc(c)}</th>`).join('');
-  let html = `<table><thead><tr><th>${esc(t('col_item'))}</th><th>${esc(t('col_code'))}</th><th>${esc(t('col_desc'))}</th><th>${esc(t('col_qty'))}</th><th>${esc(t('col_files'))}</th>${extra}</tr></thead><tbody>`;
+  if (!st) return;
+  const cols = [
+    { key: 'item', label: t('col_item'), w: 110 },
+    { key: 'code', label: t('col_code'), w: 150 },
+    { key: 'desc', label: t('col_desc'), w: 260 },
+    { key: 'qty', label: t('col_qty'), w: 70 },
+    { key: 'files', label: t('col_files'), w: 150 },
+    ...st.columns.map(c => ({ key: 'c:' + c, label: c, w: 130 })),
+  ];
   const f = (st.filter || '').toLowerCase();
-  st.rows.forEach((r, i) => {
-    if (isHidden(st, r)) return;
-    const n = r.node;
+  const visible = st.rows.map((r, i) => ({ r, i })).filter(x => !isHidden(st, x.r));
+  const cell = (x, k) => {
+    const n = x.r.node;
+    if (k === 'item') {
+      const tog = x.r.hasKids ? `<span class="toggle" onclick="toggleNode('${id}', '${x.r.key}', event)">${st.collapsed[x.r.key] ? '+' : '−'}</span>` : '<span class="toggle"></span>';
+      return `<span style="padding-left:${x.r.depth * 16}px"></span>${tog}${esc(n.item)}`;
+    }
+    if (k === 'code') return esc(n.code);
+    if (k === 'desc') return esc(n.desc);
+    if (k === 'qty') return esc(n.qty);
+    if (k === 'files') return (n.files || []).map(y => `<span class="badge">${esc(y)}</span>`).join('');
+    const i = st.columns.indexOf(k.slice(2));
+    return esc((n.values || [])[i]);
+  };
+  const attr = x => {
+    const n = x.r.node;
     const match = !f || [n.code, n.desc, ...(n.values || [])].some(v => String(v || '').toLowerCase().includes(f));
-    const tog = r.hasKids ? `<span class="toggle" onclick="toggleNode('${id}', '${r.key}', event)">${st.collapsed[r.key] ? '+' : '−'}</span>` : '<span class="toggle"></span>';
-    const cls = [i === st.sel ? 'sel' : '', n.isRoot ? 'root' : '', match ? '' : 'dim'].join(' ');
-    html += `<tr class="${cls}" id="row-${id}-${i}" onclick="selectRow('${id}', ${i})">
-      <td style="padding-left:${6 + r.depth * 16}px">${tog}${esc(n.item)}</td>
-      <td>${esc(n.code)}</td><td>${esc(n.desc)}</td><td>${esc(n.qty)}</td>
-      <td>${(n.files || []).map(x => `<span class="badge">${esc(x)}</span>`).join('')}</td>
-      ${st.columns.map((_, k) => `<td>${esc((n.values || [])[k])}</td>`).join('')}</tr>`;
-  });
-  document.getElementById('tree-' + id).innerHTML = html + '</tbody></table>';
+    return `data-i="${x.i}" onmousedown="selectRow('${id}', ${x.i})" class="${[x.i === st.sel ? 'sel' : '', n.isRoot ? 'root' : '',
+      match ? '' : 'dim', hasOpenRev(n.code) ? 'rev' : '', n.missing ? 'gone' : ''].filter(Boolean).join(' ')}"`;
+  };
+  document.getElementById('tree-' + id).innerHTML = gridHtml('tree', cols, visible, cell, attr);
 }
 
 function toggleNode(id, key, ev) {
   ev.stopPropagation();
   const st = openTabs[id];
   st.collapsed[key] = !st.collapsed[key];
-  // If the selected row just got hidden, select the row that was collapsed.
   if (isHidden(st, st.rows[st.sel])) { renderTree(id); selectRow(id, st.rows.findIndex(r => r.key === key)); return; }
   renderTree(id);
 }
@@ -683,19 +1160,16 @@ async function selectRow(id, idx) {
   const st = openTabs[id];
   if (!st || idx < 0) return;
   st.sel = idx;
-  document.querySelectorAll(`#tree-${id} tr.sel`).forEach(x => x.classList.remove('sel'));
-  const tr = document.getElementById(`row-${id}-${idx}`);
-  if (tr) { tr.classList.add('sel'); tr.scrollIntoView({ block: 'nearest' }); }
+  const wrap = document.getElementById('tree-' + id);
+  wrap.querySelectorAll('tr.sel').forEach(x => x.classList.remove('sel'));
+  const tr = wrap.querySelector(`tr[data-i="${idx}"]`);
+  if (tr) { tr.classList.add('sel'); scrollRowIntoView(tr); }
 
   const code = st.rows[idx].node.code;
   let files = [];
-  try {
-    const r = await fetch(`/api/item_files?code=${encodeURIComponent(code)}&product=${encodeURIComponent(st.product.code)}`);
-    files = await r.json();
-  } catch (e) {}
+  try { files = await (await fetch('/api/item_files?code=' + encodeURIComponent(code))).json(); } catch (e) {}
   if (openTabs[id] !== st || st.sel !== idx) return; // tab closed or user already moved on
   st.typeFiles = files;
-  // Keep the same file type while moving through the tree, if this part has it.
   let cur = st.typeFiles.find(x => x.type === st.typeName && x.files.length);
   if (!cur) cur = st.typeFiles.find(x => x.files.length);
   if (cur) st.typeName = cur.type;
@@ -711,6 +1185,11 @@ function renderTypes(id) {
   let html = `<span class="title" title="${esc(n.code + ' ' + n.desc)}">${esc(n.code)} ${esc(n.desc)}</span>`;
   html += st.typeFiles.filter(x => !x.ref || x.files.length).map(x => `<button class="${cur && x.type === st.typeName ? 'active' : ''}" ${x.files.length ? '' : 'disabled'}
       data-type="${esc(x.type)}" ${x.ref ? `title="${esc(t('attachments'))}"` : ''}>${esc(x.type)}${x.files.length > 1 || (x.list && x.files.length) ? ' (' + x.files.length + ')' : ''}</button>`).join('');
+  if (rev.enabled) {
+    const open = hasOpenRev(n.code);
+    html += `<span class="grow"></span><button onclick="openRevHistory('${esc(n.code)}', '${n.isRoot && !st.part ? 'product' : 'item'}', ${JSON.stringify(n.desc || '')})"
+       style="${open ? 'color:#ff7a7a;border-color:#ff7a7a' : ''}">⚑ ${esc(open ? t('rev_status_open') : t('revisions'))}</button>`;
+  }
   document.getElementById('types-' + id).innerHTML = html;
 }
 
@@ -725,7 +1204,6 @@ function currentFile(st) {
   const x = (st.typeFiles || []).find(y => y.type === st.typeName);
   return x && x.files.length ? { list: x.files, file: x.files[st.fileIdx] || x.files[0] } : null;
 }
-
 function curType(st) { return (st.typeFiles || []).find(y => y.type === st.typeName); }
 
 function renderTools(id) {
@@ -735,7 +1213,7 @@ function renderTools(id) {
   let html = '';
   if (isList) {
     html += `<span class="muted">${esc(t('n_files', cur.list.length))}</span>`;
-  } else if (cur && ty.list) {
+  } else if (cur && ty && ty.list) {
     html += `<button onclick="backToList('${id}')">${esc(t('back_list'))}</button><span class="muted">${esc(cur.file.name)}</span>`;
   } else if (cur && cur.list.length > 1) {
     html += `<select onchange="openTabs['${id}'].fileIdx = +this.value; showFile('${id}')">` +
@@ -800,7 +1278,7 @@ async function showFile(id) {
   const seq = st.showSeq = (st.showSeq || 0) + 1;
   const stale = () => openTabs[id] !== st || st.showSeq !== seq; // another file was picked meanwhile
   const ty = curType(st);
-  st.mode = !cur ? null : (ty.list && !st.listPick ? 'list' : cur.file.viewer);
+  st.mode = !cur ? null : (ty && ty.list && !st.listPick ? 'list' : cur.file.viewer);
   st.cadData = null; st.measuring = false; st.defaultDimText = '';
   st.pt1 = st.pt2 = st.selectedSeg = st.hoverPt = st.hoverSeg = null; st.measureText = '';
   renderTools(id);
@@ -889,10 +1367,18 @@ function startResize(ev, id) {
 }
 
 window.addEventListener('keydown', e => {
-  if (e.key === 'Escape') { closeModal('settings'); closeModal('about'); return; }
-  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  if (e.key === 'Escape') { hideCtx(); ['settings','about','revpanel','revhist','revnew','revclose'].forEach(closeModal); return; }
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
+  if (document.querySelector('.modal-bg[style*="flex"]')) return;
   const active = document.querySelector('.tab.active');
   const id = active && active.id.replace('tab-btn-', '');
+  if (id === 'home' || id === 'parts') {
+    const isProducts = id === 'home';
+    const rows = isProducts ? productRows : partRows;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); moveListSel(isProducts, e.key === 'ArrowDown' ? 1 : -1); }
+    else if (e.key === 'Enter') { const i = isProducts ? homeSel : partsSel; if (rows[i]) openProduct(rows[i].code); }
+    return;
+  }
   const st = openTabs[id];
   if (!st || (e.key !== 'ArrowDown' && e.key !== 'ArrowUp')) return;
   e.preventDefault();
@@ -902,6 +1388,7 @@ window.addEventListener('keydown', e => {
   }
 });
 
+// ---------- CAD viewer (DXF 2D / IGES 3D) ----------
 // ---------- CAD viewer (DXF 2D / IGES 3D) ----------
 function zoomViewer(tabId, factor) {
   const st = openTabs[tabId];
@@ -1237,6 +1724,116 @@ function drawCadCanvas(tabId) {
   }
 }
 
+// ---------- revisions ----------
+let revNewCtx = null;
+
+function kindLabel(k) { return t('rev_kind_' + k); }
+function statusLabel(s) { return t('rev_status_' + s); }
+
+function revItemHtml(r, withClose) {
+  const when = fmtWhen(r.created);
+  const closed = r.closed_at ? `<div class="who">${esc(t('rev_closed_by'))}: ${esc(r.closed_by || '')} · ${esc(fmtWhen(r.closed_at))}${r.answer ? ' — ' + esc(r.answer) : ''}</div>` : '';
+  return `<div class="rev-item ${esc(r.status)}">
+    <b onclick="closeModal('revhist');closeModal('revpanel');openProduct('${esc(r.code)}')">${esc(r.code)}</b> ${esc(r.desc || '')}
+    — <i>${esc(kindLabel(r.kind))}</i> · <b style="cursor:default">${esc(statusLabel(r.status))}</b>
+    ${r.note ? `<div>${esc(r.note)}</div>` : ''}
+    <div class="who">${esc(t('rev_asked_by', r.requester, when))}${r.product ? ' · ' + esc(r.product) : ''}${r.assignee ? ' · ' + esc(t('rev_assigned', r.assignee)) : ''}</div>
+    ${closed}
+    ${withClose && rev.engineering && r.status === 'open' ? `<div style="margin-top:6px"><button onclick="openRevClose('${esc(r.code)}', '${esc(r.id)}')">${esc(t('rev_close'))}</button></div>` : ''}
+  </div>`;
+}
+
+function openRevPanel() {
+  const body = document.getElementById('revpanel-body');
+  if (!rev.enabled) body.innerHTML = `<div class="warnbox">${esc(t('rev_off'))}</div>`;
+  else if (!rev.online) body.innerHTML = `<div class="warnbox">${esc(t('rev_offline'))}</div>`;
+  else body.innerHTML = rev.open.length
+    ? `<div class="rev-list">${rev.open.map(r => revItemHtml(r, true)).join('')}</div>`
+    : `<p class="muted">${esc(t('rev_none'))}</p>`;
+  document.getElementById('btn-export').style.display = rev.engineering ? '' : 'none';
+  showModal('revpanel');
+}
+
+function exportRevisions() { location.href = '/api/revisions/export?lang=' + encodeURIComponent(lang); }
+
+async function openRevHistory(code, scope, desc) {
+  document.getElementById('revhist-title').innerText = t('rev_history_for', code + (desc ? ' ' + desc : ''));
+  const body = document.getElementById('revhist-body');
+  body.innerHTML = '…';
+  showModal('revhist');
+  let d;
+  try { d = await (await fetch(`/api/revisions?code=${encodeURIComponent(code)}&scope=${scope}`)).json(); } catch (e) { return; }
+  let html = '';
+  if (!d.online) html += `<div class="warnbox">${esc(t('rev_offline'))}</div>`;
+  if (scope === 'product') html += `<div class="muted">${esc(t('rev_whole_product'))}</div>`;
+  html += d.rows.length ? `<div class="rev-list">${d.rows.map(r => revItemHtml(r, true)).join('')}</div>`
+    : `<p class="muted">${esc(t('rev_history_none'))}</p>`;
+  html += `<div style="margin-top:10px"><button class="primary" onclick="closeModal('revhist');openRevNew('${esc(code)}', ${JSON.stringify(desc || '')}, '${esc(code)}')" ${rev.online ? '' : 'disabled'}>${esc(t('rev_request'))}</button></div>`;
+  body.innerHTML = html;
+}
+
+function openRevNew(code, desc, product) {
+  revNewCtx = { code, desc: desc || '', product: product || code };
+  document.getElementById('revnew-title').innerText = t('rev_request_for', code + (desc ? ' ' + desc : ''));
+  document.getElementById('rv-who').value = rev.requester || '';
+  const sel = document.getElementById('rv-kind');
+  sel.innerHTML = REV_KINDS.map(k => `<option value="${k}">${esc(kindLabel(k))}</option>`).join('');
+  sel.value = 'measure';
+  document.getElementById('rv-note').value = '';
+  document.getElementById('rv-to').value = '';
+  revKindChanged();
+  showModal('revnew');
+  setTimeout(() => document.getElementById(rev.requester ? 'rv-note' : 'rv-who').focus(), 50);
+}
+
+function revKindChanged() {
+  const other = document.getElementById('rv-kind').value === 'other';
+  document.getElementById('rv-note-label').innerHTML = other
+    ? esc(t('rev_note')) + ' <span class="req">*</span>' : esc(t('rev_note_opt'));
+}
+
+async function submitRevision() {
+  const who = document.getElementById('rv-who').value.trim();
+  const kind = document.getElementById('rv-kind').value;
+  const note = document.getElementById('rv-note').value.trim();
+  if (!who) { document.getElementById('rv-who').focus(); return; }
+  if (kind === 'other' && !note) { document.getElementById('rv-note').focus(); return; }
+  const r = await fetch('/api/revisions/new', { method: 'POST', body: JSON.stringify({
+    code: revNewCtx.code, desc: revNewCtx.desc, product: revNewCtx.product,
+    requester: who, kind, note, assignee: document.getElementById('rv-to').value.trim() }) });
+  if (!r.ok) { alert(t('rev_offline')); return; }
+  closeModal('revnew');
+  toast(t('rev_sent'));
+  pollStatus();
+}
+
+let revCloseList = [];
+async function openRevClose(code, id) {
+  closeModal('revhist'); closeModal('revpanel');
+  document.getElementById('revclose-title').innerText = t('rev_close_for', code);
+  document.getElementById('rc-answer').value = '';
+  document.getElementById('rc-by').value = rev.requester || '';
+  let d;
+  try { d = await (await fetch(`/api/revisions?code=${encodeURIComponent(code)}&scope=item`)).json(); } catch (e) { return; }
+  revCloseList = d.rows.filter(r => r.status === 'open');
+  if (id) revCloseList = revCloseList.filter(r => r.id === id);
+  if (!revCloseList.length) { toast(t('rev_none')); return; }
+  document.getElementById('revclose-body').innerHTML = revCloseList.map(r =>
+    `<div class="rev-item open">${esc(kindLabel(r.kind))}${r.note ? ' — ' + esc(r.note) : ''}
+     <div class="who">${esc(t('rev_asked_by', r.requester, fmtWhen(r.created)))}</div></div>`).join('');
+  showModal('revclose');
+}
+
+async function submitClose() {
+  const answer = document.getElementById('rc-answer').value.trim();
+  const by = document.getElementById('rc-by').value.trim();
+  for (const r of revCloseList) {
+    await fetch('/api/revisions/close', { method: 'POST', body: JSON.stringify({ ID: r.id, Answer: answer, By: by }) });
+  }
+  closeModal('revclose');
+  pollStatus();
+}
+
 // ---------- settings ----------
 function addFileTypeRow(ft) {
   const tr = document.createElement('tr');
@@ -1249,48 +1846,68 @@ function addFileTypeRow(ft) {
   document.getElementById('ft-body').appendChild(tr);
 }
 
-function fillSettings(c) {
+// Fields that come from the shared file, locked unless this computer may edit it.
+const SHARED_FIELDS = ['s-bom-folder', 's-bom-prefix', 's-sep', 's-det-prefix', 's-det-file', 's-products-folder',
+  's-ref-folder', 's-rev-folder', 's-c-item', 's-c-code', 's-c-desc', 's-c-qty', 's-hidden', 's-parts-cols'];
+
+function fillSettings(c, shared) {
   const v = (id, val) => document.getElementById(id).value = val || '';
-  v('s-lang', c.language);
+  v('s-lang', c.language); v('s-mode', c.mode || 'production'); v('s-shared', c.shared_config);
   v('s-bom-folder', c.bom_folder); v('s-bom-prefix', c.bom_prefix); v('s-sep', c.name_separator);
   v('s-det-prefix', c.details_prefix); v('s-det-file', c.details_file);
+  v('s-products-folder', c.products_folder); v('s-ref-folder', c.ref_folder); v('s-rev-folder', c.revisions_folder);
   v('s-c-item', c.columns.item); v('s-c-code', c.columns.code); v('s-c-desc', c.columns.description); v('s-c-qty', c.columns.qty);
   v('s-hidden', (c.hidden_columns || []).join(', '));
-  v('s-ref-folder', c.ref_folder); v('s-parts-cols', (c.parts_columns || []).join(', '));
+  v('s-parts-cols', (c.parts_columns || []).join(', '));
   document.getElementById('ft-body').innerHTML = '';
   (c.file_types || []).forEach(addFileTypeRow);
+
+  const locked = shared && shared.active && !shared.editable;
+  SHARED_FIELDS.forEach(id => document.getElementById(id).disabled = locked);
+  document.querySelectorAll('#ft-body input, #ft-body select, #ft-body button').forEach(el => el.disabled = locked);
+  let note = '';
+  if (shared && shared.offline) note += `<div class="warnbox">${esc(t('s_shared_offline'))}</div>`;
+  if (locked) note += `<div class="warnbox">${esc(t('s_shared_locked'))}</div>`;
+  document.getElementById('shared-note').innerHTML = note;
 }
 
 async function openSettings() {
-  cfgCache = await (await fetch('/api/config')).json();
-  fillSettings(cfgCache);
-  document.getElementById('settings').style.display = 'flex';
+  const d = await (await fetch('/api/config')).json();
+  cfgCache = d.config;
+  fillSettings(d.config, d.shared);
+  showModal('settings');
 }
 
 async function restoreDefaults() {
   const d = await (await fetch('/api/default_config')).json();
-  // Keep what is specific to this computer: language and folders.
+  // Keep what is specific to this computer and this network.
   d.language = document.getElementById('s-lang').value;
+  d.mode = document.getElementById('s-mode').value;
+  d.shared_config = document.getElementById('s-shared').value;
   d.bom_folder = document.getElementById('s-bom-folder').value;
+  d.products_folder = document.getElementById('s-products-folder').value;
   d.ref_folder = document.getElementById('s-ref-folder').value;
+  d.revisions_folder = document.getElementById('s-rev-folder').value;
   const folders = {};
   document.querySelectorAll('#ft-body tr').forEach(tr => {
     folders[tr.querySelector('.ft-name').value.trim().toUpperCase()] = tr.querySelector('.ft-folders').value.split(';').map(x => x.trim()).filter(Boolean);
   });
   d.file_types.forEach(ft => { ft.folders = folders[ft.name.toUpperCase()] || []; });
-  fillSettings(d);
+  fillSettings(d, null);
 }
 
 async function saveSettings() {
   const g = id => document.getElementById(id).value;
   const split = (s, sep) => s.split(sep).map(x => x.trim()).filter(Boolean);
   const c = Object.assign({}, cfgCache, {
-    language: g('s-lang'),
+    language: g('s-lang'), mode: g('s-mode'), shared_config: g('s-shared').trim(),
     bom_folder: g('s-bom-folder').trim(), bom_prefix: g('s-bom-prefix'), name_separator: g('s-sep'),
     details_prefix: g('s-det-prefix'), details_file: g('s-det-file').trim(),
+    products_folder: g('s-products-folder').trim(), ref_folder: g('s-ref-folder').trim(),
+    revisions_folder: g('s-rev-folder').trim(),
     columns: { item: g('s-c-item'), code: g('s-c-code'), description: g('s-c-desc'), qty: g('s-c-qty') },
     hidden_columns: split(g('s-hidden'), ','),
-    ref_folder: g('s-ref-folder').trim(), parts_columns: split(g('s-parts-cols'), ','),
+    parts_columns: split(g('s-parts-cols'), ','),
     file_types: [...document.querySelectorAll('#ft-body tr')].map(tr => ({
       name: tr.querySelector('.ft-name').value.trim(),
       extensions: split(tr.querySelector('.ft-ext').value, ','),
@@ -1301,8 +1918,7 @@ async function saveSettings() {
   });
   const r = await fetch('/api/config', { method: 'POST', body: JSON.stringify(c) });
   if (!r.ok) return;
-  // Reload so the new language, columns and folders apply everywhere.
-  location.reload();
+  location.reload(); // the new language, columns and folders apply everywhere
 }
 
 // ---------- about ----------
@@ -1312,16 +1928,21 @@ async function openAbout() {
   repoUrl = v.repo;
   document.getElementById('ab-ver').innerText = `v${v.version} (${v.date})`;
   document.getElementById('ab-cfg').innerText = v.config_path;
-  document.getElementById('about').style.display = 'flex';
+  showModal('about');
 }
 function openRepo(path) { fetch('/api/open_url?url=' + encodeURIComponent(repoUrl + path), { method: 'POST' }); }
 
 // ---------- start ----------
 window.addEventListener('pagehide', () => navigator.sendBeacon('/api/closing'));
 (async function start() {
-  try { lang = pickLang((await (await fetch('/api/config')).json()).language); } catch (e) {}
+  try {
+    const d = await (await fetch('/api/config')).json();
+    lang = pickLang(d.config.language);
+    LAYOUT = d.config.column_layout || {};
+  } catch (e) {}
   document.documentElement.lang = lang;
   applyI18n(document);
+  showStatus();
   await pollStatus();
   setInterval(pollStatus, 4000);
 })();

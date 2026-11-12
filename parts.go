@@ -46,6 +46,7 @@ type PartRec struct {
 	Vals     []string `json:"vals"` // aligned with Config.PartsColumns
 	Used     []string `json:"used"` // products whose BOM contains it
 	Assembly bool     `json:"assembly"`
+	Missing  bool     `json:"missing,omitempty"` // had files last time, has none now
 	Files    []string `json:"files"`
 	Mtime    float64  `json:"mtime"` // date of its main file
 	Src      string   `json:"src"`   // product used to show its sub-tree
@@ -154,35 +155,73 @@ func buildPartsIndex(cfg Config, list []Product, progress func(done, total int))
 	next := map[string]bomCacheEntry{}
 	sharedMt := statMtime(cfg.DetailsFile)
 
+	// Spreadsheets are read in parallel: most of the time is the network
+	// answering, not the parsing. The results are merged in list order, so
+	// the index does not depend on which worker finished first.
+	type job struct {
+		i     int
+		p     Product
+		detMt float64
+	}
+	jobs := make(chan job)
+	results := make([]*bomCacheEntry, len(list))
+	var wg sync.WaitGroup
+	var done int
+	var progMu sync.Mutex
+	for w := 0; w < 6; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := range jobs {
+				res := buildBom(j.p, cfg)
+				unreadable := false
+				for _, warn := range res.Warnings {
+					unreadable = unreadable || warn == "bom_unreadable"
+				}
+				if !unreadable {
+					ent := &bomCacheEntry{Mtime: j.p.Mtime, DetMtime: j.detMt, Columns: res.Columns}
+					walkTree(res.Tree, func(n *TreeNode) {
+						if strings.TrimSpace(n.Code) != "" {
+							ent.Rows = append(ent.Rows, cachedRow{Code: strings.TrimSpace(n.Code), Desc: n.Desc, Vals: n.Values, Kids: len(n.Children) > 0})
+						}
+					})
+					results[j.i] = ent
+				}
+				progMu.Lock()
+				done++
+				if progress != nil {
+					progress(done, len(list))
+				}
+				progMu.Unlock()
+			}
+		}()
+	}
 	for i, p := range list {
 		detMt := p.DetailsMtime
 		if p.DetailsFile == "" {
 			detMt = sharedMt
 		}
-		ent, ok := cache.Boms[p.BomFile]
-		if !ok || ent.Mtime != p.Mtime || ent.DetMtime != detMt {
-			res := buildBom(p, cfg)
-			ent = bomCacheEntry{Mtime: p.Mtime, DetMtime: detMt, Columns: res.Columns}
-			walkTree(res.Tree, func(n *TreeNode) {
-				if strings.TrimSpace(n.Code) != "" {
-					ent.Rows = append(ent.Rows, cachedRow{Code: strings.TrimSpace(n.Code), Desc: n.Desc, Vals: n.Values, Kids: len(n.Children) > 0})
-				}
-			})
-			unreadable := false
-			for _, w := range res.Warnings {
-				unreadable = unreadable || w == "bom_unreadable"
-			}
-			if unreadable {
-				ok = false // do not remember a failed read (file open in Excel, network hiccup)
-			} else {
-				ok = true
-			}
+		if p.BomFile == "" {
+			progMu.Lock()
+			done++
+			progMu.Unlock()
+			continue // product with no BOM: nothing to index
 		}
-		if ok {
-			next[p.BomFile] = ent
+		if ent, ok := cache.Boms[p.BomFile]; ok && ent.Mtime == p.Mtime && ent.DetMtime == detMt {
+			copied := ent
+			results[i] = &copied
+			progMu.Lock()
+			done++
+			progMu.Unlock()
+			continue
 		}
-		if progress != nil {
-			progress(i+1, len(list))
+		jobs <- job{i: i, p: p, detMt: detMt}
+	}
+	close(jobs)
+	wg.Wait()
+	for i, ent := range results {
+		if ent != nil {
+			next[list[i].BomFile] = *ent
 		}
 	}
 	cache.Boms = next
@@ -254,6 +293,12 @@ func buildPartsIndex(cfg Config, list []Product, progress func(done, total int))
 		}
 		return names, mt
 	}
+	partsMu.RLock()
+	hadFiles := make(map[string]bool, len(partsList))
+	for _, old := range partsList {
+		hadFiles[strings.ToUpper(old.Code)] = len(old.Files) > 0
+	}
+	partsMu.RUnlock()
 	for _, rec := range parts {
 		rec.Files, rec.Mtime = typesOf(rec.Code)
 		if rec.Files == nil {
@@ -262,6 +307,8 @@ func buildPartsIndex(cfg Config, list []Product, progress func(done, total int))
 		if hasRefs(cfg, rec.Code, codes) {
 			rec.Files = append(rec.Files, refTypeName)
 		}
+		// Had files on the last scan and has none now: deleted or moved.
+		rec.Missing = len(rec.Files) == 0 && hadFiles[strings.ToUpper(rec.Code)]
 	}
 	sort.Slice(parts, func(i, j int) bool { return strings.ToLower(parts[i].Code) < strings.ToLower(parts[j].Code) })
 	setParts(parts)
@@ -375,6 +422,9 @@ func registerPartsRoutes(mux *http.ServeMux) {
 			sort.Slice(vals, func(a, b int) bool { return strings.ToLower(vals[a]) < strings.ToLower(vals[b]) })
 			if len(vals) > 500 {
 				vals = vals[:500]
+			}
+			if vals == nil {
+				vals = []string{} // a column with no values yet: still a list, not null
 			}
 			facets = append(facets, facet{Name: c, Values: vals})
 		}

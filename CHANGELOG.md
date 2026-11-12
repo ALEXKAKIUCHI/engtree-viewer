@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.2.0 — 2026-11-12
+
+- **Revisions**: the shop floor asks engineering to fix a part, the part shows
+  in red everywhere until it is settled, engineering closes it with a short
+  answer, and the whole history exports as a spreadsheet. Records are one file
+  each in a shared network folder; nothing is ever deleted. Production and
+  engineering modes, set per computer, with a pending alert on start
+- **Right-click menu** on lists and tree: open, copy code or description,
+  open file, show in folder, ZIP, and the revisions
+- **Columns** can be resized and reordered by dragging, saved per list, with
+  "Restore columns" on the header menu
+- **Shared settings file** on the network: folders, columns and file types for
+  every computer; language, mode and column layout stay per machine
+- Products that have no BOM spreadsheet, taken from a folder of files
+- Rows select like a list: dragging across them no longer selects text
+- Arrow keys and Enter in the products and parts lists
+- Attachments shown as grey when a part's files were deleted or moved
+- BOM spreadsheets are read in parallel, which speeds up the first index
+- Fix: the product list had no scrollbar
+
 ## 0.1.0 — 2026-11-12
 
 First public version.

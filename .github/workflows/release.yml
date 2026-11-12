@@ -1,0 +1,49 @@
+name: Release
+
+# Builds the Windows executable and publishes it on a new tag, so the file
+# people download is built from the code in this repository, not on a laptop.
+#
+#   git tag v0.2.0 && git push origin v0.2.0
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Build EngTreeViewer.exe
+        run: GOOS=windows GOARCH=amd64 go build -ldflags="-s -w -H=windowsgui" -o EngTreeViewer.exe .
+
+      - name: Package
+        run: |
+          mkdir -p pkg
+          cp EngTreeViewer.exe README.md README.pt-BR.md LICENSE pkg/
+          cp docs/engtree.example.json pkg/
+          cp docs/GUIA.md docs/GUIDE.md pkg/
+          (cd pkg && zip -qr "../EngTreeViewer-${GITHUB_REF_NAME}-windows-x64.zip" .)
+          sha256sum EngTreeViewer.exe *.zip > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Release notes from the changelog
+        run: |
+          awk '/^## /{n++} n==1' CHANGELOG.md > notes.md || true
+          [ -s notes.md ] || echo "See CHANGELOG.md" > notes.md
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "EngTree Viewer $GITHUB_REF_NAME" \
+            --notes-file notes.md \
+            EngTreeViewer.exe *.zip SHA256SUMS.txt

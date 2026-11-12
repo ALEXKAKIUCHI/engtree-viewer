@@ -286,6 +286,9 @@ func markAvailability(cfg Config, nodes []*TreeNode, others map[string]bool) {
 		if hasRefs(cfg, n.Code, others) {
 			n.Files = append(n.Files, refTypeName)
 		}
+		if rec := findPart(n.Code); rec != nil {
+			n.Missing = rec.Missing
+		}
 	})
 }
 

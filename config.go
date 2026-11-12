@@ -27,8 +27,8 @@ type FileType struct {
 
 // Columns holds the header names used to find the key BOM columns. Each
 // field accepts alternatives separated by "|"; the first one found wins.
-// Matching ignores case, accents and punctuation. Every other column of the
-// spreadsheet is shown as-is.
+// Matching ignores case, accents and punctuation; "#2" means the 2nd column.
+// Every other column of the spreadsheet is shown as-is.
 type Columns struct {
 	Item        string `json:"item"`
 	Code        string `json:"code"`
@@ -36,15 +36,52 @@ type Columns struct {
 	Qty         string `json:"qty"`
 }
 
-type Config struct {
-	// Folder with the BOM spreadsheets (.xlsx, .csv, .txt). Each BOM file is
-	// one product. The product code and description come from the file name:
-	// "<prefix><code><separator><description>.xlsx".
-	Language string `json:"language"` // "" = follow the system, "en" or "pt-BR"
+// ListLayout is how one list looks after the user dragged its columns: the
+// order of the column keys and their widths in pixels.
+type ListLayout struct {
+	Order  []string       `json:"order,omitempty"`
+	Widths map[string]int `json:"widths,omitempty"`
+}
 
+// Modes. The mode belongs to the computer, not to a person: there is no
+// login. A shop-floor PC stays in production mode and can ask for revisions;
+// an engineering PC can also close them.
+const (
+	ModeProduction  = "production"
+	ModeEngineering = "engineering"
+)
+
+type Config struct {
+	// ---- Settings of this computer ----
+
+	Language string `json:"language"` // "" = follow the system, "en" or "pt-BR"
+	Mode     string `json:"mode"`     // production (default) or engineering
+
+	// Optional path to an engtree.json on the network holding the settings
+	// below ("shared settings"). Engineering sets the folders once and every
+	// computer follows. The last copy read is kept locally, so a dropped
+	// network does not leave the program unconfigured.
+	SharedConfig string `json:"shared_config"`
+
+	// Name of whoever last asked for a revision on this computer, offered
+	// again next time.
+	Requester string `json:"requester,omitempty"`
+
+	ColumnLayout map[string]ListLayout `json:"column_layout,omitempty"`
+
+	// ---- Shared settings (see SharedConfig) ----
+
+	// Folder with the BOM spreadsheets (.xlsx, .csv, .txt). Each spreadsheet
+	// is one product; code and description come from the file name:
+	// "<prefix><code><separator><description>.xlsx".
 	BomFolder     string `json:"bom_folder"`
 	BomPrefix     string `json:"bom_prefix"`     // e.g. "BOM - "; empty = every spreadsheet is a BOM
 	NameSeparator string `json:"name_separator"` // between code and description, default " - "
+
+	// Optional folder whose files are products with no BOM spreadsheet
+	// (often a folder of whole-product drawings). A file there becomes a
+	// product, with its files but no tree, when no BOM has that code.
+	ProductsFolder string `json:"products_folder"`
 
 	// Optional secondary spreadsheet with extra data per part (finish, color,
 	// supplier...), joined to the BOM by part code. Either one file per
@@ -66,9 +103,28 @@ type Config struct {
 	// e.g. ["Material", "Finish"].
 	PartsColumns []string `json:"parts_columns"`
 
-	// Column widths of the lists. Kept here (not in the browser) because the
-	// local address changes on every start.
-	ColumnWidths map[string]int `json:"column_widths,omitempty"`
+	// Folder where revision requests are stored, one small file each. It is
+	// the only folder EngTree writes to. Without it, revisions are off.
+	RevisionsFolder string `json:"revisions_folder"`
+}
+
+func (c Config) isEngineering() bool { return c.Mode == ModeEngineering }
+
+// applyShared copies the shared settings of src into dst, leaving every
+// setting that belongs to this computer untouched.
+func applyShared(dst *Config, src Config) {
+	dst.BomFolder = src.BomFolder
+	dst.BomPrefix = src.BomPrefix
+	dst.NameSeparator = src.NameSeparator
+	dst.ProductsFolder = src.ProductsFolder
+	dst.DetailsPrefix = src.DetailsPrefix
+	dst.DetailsFile = src.DetailsFile
+	dst.Columns = src.Columns
+	dst.HiddenColumns = src.HiddenColumns
+	dst.FileTypes = src.FileTypes
+	dst.RefFolder = src.RefFolder
+	dst.PartsColumns = src.PartsColumns
+	dst.RevisionsFolder = src.RevisionsFolder
 }
 
 func defaultColumns() Columns {
@@ -82,6 +138,7 @@ func defaultColumns() Columns {
 
 func defaultConfig() Config {
 	return Config{
+		Mode:          ModeProduction,
 		NameSeparator: " - ",
 		Columns:       defaultColumns(),
 		FileTypes: []FileType{
@@ -92,22 +149,34 @@ func defaultConfig() Config {
 	}
 }
 
+// sharedStatus is what the settings screen shows about the shared file.
+type sharedStatus struct {
+	Active   bool   `json:"active"`   // settings are coming from the shared file
+	Path     string `json:"path"`     //
+	Editable bool   `json:"editable"` // engineering mode and the file can be written
+	Offline  bool   `json:"offline"`  // set, but unreachable: using the last copy
+}
+
 var (
-	cfgMu   sync.RWMutex
-	appCfg  Config
-	cfgPath string
-	dataDir string
+	cfgMu     sync.RWMutex
+	appCfg    Config
+	sharedAt  sharedStatus
+	cfgPath   string
+	dataDir   string
+	portable  bool
+	exeFolder string
 )
 
 // initPaths picks where settings live. A file named engtree.json next to the
-// executable makes the install portable (handy to copy the same setup to
-// several shop-floor PCs); otherwise the per-user config folder is used.
+// executable makes the install portable (handy on a pen drive, or to copy
+// the same setup to several shop-floor PCs); otherwise the per-user config
+// folder is used.
 func initPaths() {
 	if exe, err := os.Executable(); err == nil {
-		p := filepath.Join(filepath.Dir(exe), "engtree.json")
+		exeFolder = filepath.Dir(exe)
+		p := filepath.Join(exeFolder, "engtree.json")
 		if _, err := os.Stat(p); err == nil {
-			cfgPath = p
-			dataDir = filepath.Dir(exe)
+			cfgPath, dataDir, portable = p, exeFolder, true
 			return
 		}
 	}
@@ -120,16 +189,63 @@ func initPaths() {
 	cfgPath = filepath.Join(dataDir, "engtree.json")
 }
 
+func sharedCachePath() string { return filepath.Join(dataDir, "shared_config_cache.json") }
+
+func readConfigFile(path string) (Config, bool) {
+	var c Config
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return c, false
+	}
+	if json.Unmarshal(b, &c) != nil {
+		return c, false
+	}
+	return c, true
+}
+
 func loadConfig() {
 	cfgMu.Lock()
 	defer cfgMu.Unlock()
 	appCfg = defaultConfig()
-	if b, err := os.ReadFile(cfgPath); err == nil {
-		_ = json.Unmarshal(b, &appCfg)
+	if local, ok := readConfigFile(cfgPath); ok {
+		appCfg = local
 	} else {
-		saveConfigLocked()
+		saveLocalLocked()
 	}
+	loadSharedLocked()
 	normalizeConfig(&appCfg)
+}
+
+// loadSharedLocked pulls the shared settings in, falling back to the last
+// copy read when the network is down.
+func loadSharedLocked() {
+	sharedAt = sharedStatus{}
+	path := strings.TrimSpace(appCfg.SharedConfig)
+	if path == "" {
+		return
+	}
+	sharedAt.Active, sharedAt.Path = true, path
+	if shared, ok := readConfigFile(path); ok {
+		applyShared(&appCfg, shared)
+		if b, err := json.MarshalIndent(shared, "", "  "); err == nil {
+			_ = os.WriteFile(sharedCachePath(), b, 0644)
+		}
+		sharedAt.Editable = appCfg.isEngineering() && isWritable(path)
+		return
+	}
+	sharedAt.Offline = true
+	if cached, ok := readConfigFile(sharedCachePath()); ok {
+		applyShared(&appCfg, cached)
+	}
+}
+
+func isWritable(path string) bool {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return false
+	}
+	_ = f.Close()
+	return true
 }
 
 // normalizeConfig fills blanks so the rest of the code can rely on them.
@@ -150,10 +266,13 @@ func normalizeConfig(c *Config) {
 	if c.NameSeparator == "" {
 		c.NameSeparator = " - "
 	}
+	if c.Mode != ModeEngineering {
+		c.Mode = ModeProduction
+	}
 	var types []FileType
 	for _, ft := range c.FileTypes {
 		ft.Name = strings.TrimSpace(ft.Name)
-		if ft.Name == "" {
+		if ft.Name == "" || ft.Name == refTypeName {
 			continue
 		}
 		var exts []string
@@ -189,12 +308,58 @@ func normalizeConfig(c *Config) {
 	}
 	c.PartsColumns = pc
 	c.RefFolder = strings.TrimSpace(c.RefFolder)
+	c.ProductsFolder = strings.TrimSpace(c.ProductsFolder)
+	c.RevisionsFolder = strings.TrimSpace(c.RevisionsFolder)
+	c.SharedConfig = strings.TrimSpace(c.SharedConfig)
 }
 
-func saveConfigLocked() {
-	if b, err := json.MarshalIndent(appCfg, "", "  "); err == nil {
+// saveLocalLocked writes this computer's file. When the settings come from a
+// shared file, the shared part is left out, so a copy of it is never
+// mistaken for the settings themselves.
+func saveLocalLocked() {
+	out := appCfg
+	if sharedAt.Active {
+		applyShared(&out, Config{})
+	}
+	if b, err := json.MarshalIndent(out, "", "  "); err == nil {
 		_ = os.WriteFile(cfgPath, b, 0644)
 	}
+}
+
+// saveConfig stores incoming settings and returns what is in force now.
+func saveConfig(in Config) Config {
+	cfgMu.Lock()
+	defer cfgMu.Unlock()
+	normalizeConfig(&in)
+	// Settings that are not on the settings screen are kept.
+	if in.ColumnLayout == nil {
+		in.ColumnLayout = appCfg.ColumnLayout
+	}
+	if in.Requester == "" {
+		in.Requester = appCfg.Requester
+	}
+	writeShared := sharedAt.Active && !sharedAt.Offline && sharedAt.Editable && in.SharedConfig == sharedAt.Path
+	sharedPath := sharedAt.Path
+	appCfg = in
+	if writeShared {
+		shared, _ := readConfigFile(sharedPath)
+		applyShared(&shared, in)
+		if b, err := json.MarshalIndent(shared, "", "  "); err == nil {
+			_ = os.WriteFile(sharedPath, b, 0644)
+		}
+	}
+	loadSharedLocked() // re-read: the path may have just changed
+	normalizeConfig(&appCfg)
+	saveLocalLocked()
+	return appCfg
+}
+
+// setLocal changes settings of this computer only (mode, layout, requester).
+func setLocal(fn func(c *Config)) {
+	cfgMu.Lock()
+	fn(&appCfg)
+	saveLocalLocked()
+	cfgMu.Unlock()
 }
 
 func getConfig() Config {
@@ -203,14 +368,20 @@ func getConfig() Config {
 	return appCfg
 }
 
-// isConfigured is false until the user has set at least the BOM folder.
+func getSharedStatus() sharedStatus {
+	cfgMu.RLock()
+	defer cfgMu.RUnlock()
+	return sharedAt
+}
+
+// isConfigured is false until the user has set at least one source folder.
 func (c Config) isConfigured() bool {
-	return strings.TrimSpace(c.BomFolder) != ""
+	return strings.TrimSpace(c.BomFolder) != "" || strings.TrimSpace(c.ProductsFolder) != ""
 }
 
 // allowedRoots lists every folder the app may serve files from.
 func (c Config) allowedRoots() []string {
-	roots := []string{c.BomFolder, c.RefFolder}
+	roots := []string{c.BomFolder, c.RefFolder, c.ProductsFolder}
 	if c.DetailsFile != "" {
 		roots = append(roots, filepath.Dir(c.DetailsFile))
 	}

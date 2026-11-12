@@ -21,7 +21,7 @@ import (
 // Shown in the About box. Bump both on every release and add a line to
 // CHANGELOG.md.
 const (
-	appVersion   = "0.1.0"
+	appVersion   = "0.2.0"
 	appBuildDate = "2026-11-12"
 	repoURL      = "https://github.com/ALEXKAKIUCHI/engtree-viewer"
 )
@@ -80,6 +80,12 @@ func refreshProducts() {
 	scanMu.Unlock()
 
 	go func() {
+		// A rescan is also the moment to notice that engineering changed the
+		// shared settings, or that the network came back.
+		cfgMu.Lock()
+		loadSharedLocked()
+		normalizeConfig(&appCfg)
+		cfgMu.Unlock()
 		defer func() {
 			scanMu.Lock()
 			scanning = false
@@ -337,7 +343,8 @@ func main() {
 	mux.Handle("/assets/", http.FileServer(http.FS(uiFiles)))
 
 	mux.HandleFunc("/api/version", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, map[string]string{"version": appVersion, "date": appBuildDate, "repo": repoURL, "config_path": cfgPath})
+		writeJSON(w, map[string]any{"version": appVersion, "date": appBuildDate, "repo": repoURL,
+			"config_path": cfgPath, "portable": portable, "data_dir": dataDir})
 	})
 
 	mux.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
@@ -353,6 +360,10 @@ func main() {
 			"phase":      phase,
 			"progress":   prog,
 			"rev":        rev,
+			"mode":       cfg.Mode,
+			"revisions":  revisionsEnabled(cfg),
+			"open_codes": openCounts(cfg),
+			"shared":     getSharedStatus(),
 		})
 	})
 
@@ -398,42 +409,55 @@ func main() {
 				http.Error(w, "invalid settings", 400)
 				return
 			}
-			normalizeConfig(&in)
-			cfgMu.Lock()
-			if in.ColumnWidths == nil {
-				in.ColumnWidths = appCfg.ColumnWidths
-			}
-			appCfg = in
-			saveConfigLocked()
-			cfgMu.Unlock()
+			saveConfig(in)
 			reachMu.Lock()
 			reachCache = map[string]reachItem{}
 			reachMu.Unlock()
+			invalidateRevisions()
 			refreshProducts()
 		}
-		writeJSON(w, getConfig())
+		writeJSON(w, map[string]any{"config": getConfig(), "shared": getSharedStatus(), "portable": portable, "config_path": cfgPath})
 	})
 
 	mux.HandleFunc("/api/default_config", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, defaultConfig())
 	})
 
-	mux.HandleFunc("/api/column_widths", func(w http.ResponseWriter, r *http.Request) {
+	// How the user left the columns of one list: order and widths.
+	mux.HandleFunc("/api/column_layout", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
-			var in map[string]int
+			var in map[string]ListLayout
 			if json.NewDecoder(r.Body).Decode(&in) == nil {
-				cfgMu.Lock()
-				if appCfg.ColumnWidths == nil {
-					appCfg.ColumnWidths = map[string]int{}
-				}
-				for k, v := range in {
-					appCfg.ColumnWidths[k] = v
-				}
-				saveConfigLocked()
-				cfgMu.Unlock()
+				setLocal(func(c *Config) {
+					if c.ColumnLayout == nil {
+						c.ColumnLayout = map[string]ListLayout{}
+					}
+					for k, v := range in {
+						if len(v.Order) == 0 && len(v.Widths) == 0 {
+							delete(c.ColumnLayout, k) // "restore columns"
+						} else {
+							c.ColumnLayout[k] = v
+						}
+					}
+				})
 			}
 		}
-		writeJSON(w, getConfig().ColumnWidths)
+		writeJSON(w, getConfig().ColumnLayout)
+	})
+
+	// The mode belongs to the computer and is never taken from the network.
+	mux.HandleFunc("/api/mode", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			mode := ModeProduction
+			if r.URL.Query().Get("mode") == ModeEngineering {
+				mode = ModeEngineering
+			}
+			setLocal(func(c *Config) { c.Mode = mode })
+			cfgMu.Lock()
+			loadSharedLocked() // whether the shared file is editable depends on the mode
+			cfgMu.Unlock()
+		}
+		writeJSON(w, map[string]string{"mode": getConfig().Mode})
 	})
 
 	// A product (whole BOM) or a part/assembly (the part and its sub-tree).
@@ -561,6 +585,7 @@ func main() {
 	})
 
 	registerPartsRoutes(mux)
+	registerRevisionRoutes(mux)
 
 	mux.HandleFunc("/api/open_url", func(w http.ResponseWriter, r *http.Request) {
 		// Only the project page (About / report a problem); nothing else.
