@@ -86,92 +86,151 @@ func Parts(path string, opt Options) ([]geom.Contour, []string, error) {
 
 // ---- joining ----
 
-type node struct {
-	p    geom.Point
-	segs []int // segments that touch this node
-}
-
 // joinRings walks the segments end to end. It returns the closed rings and
 // how many chains never closed.
+//
+// Real drawings are not tidy, so three things are dealt with before and
+// during the walk:
+//
+//   - the same line drawn twice (very common in exports) counts once;
+//     otherwise the two copies close on each other and eat an edge of the
+//     outline;
+//   - loose ends (a stray line hanging off the outline, or an outline with
+//     a gap) are peeled away first and reported, instead of leading the
+//     walk into a dead end that would lose the whole outline;
+//   - when the walk comes back to a point it has already passed (two
+//     shapes touching at a corner), the loop just closed is cut off as its
+//     own ring, instead of one ring that crosses itself.
 func joinRings(segs []Segment, tol float64) ([]geom.Polygon, int) {
-	type endRef struct{ a, b int } // node index of each end
-
-	nodes := []node{}
+	// 1. Ends within tolerance become one node.
+	var pts []geom.Point
 	index := map[[2]int][]int{} // grid cell -> node indices
-	cell := func(p geom.Point) [2]int {
-		return [2]int{int(math.Floor(p.X / tol)), int(math.Floor(p.Y / tol))}
-	}
 	nodeAt := func(p geom.Point) int {
-		c := cell(p)
-		// Look in the neighbouring cells too: two ends within tolerance can
-		// still fall on either side of a cell edge.
+		c := [2]int{int(math.Floor(p.X / tol)), int(math.Floor(p.Y / tol))}
+		// Neighbouring cells too: two ends within tolerance can still fall
+		// on either side of a cell edge.
 		for dx := -1; dx <= 1; dx++ {
 			for dy := -1; dy <= 1; dy++ {
 				for _, n := range index[[2]int{c[0] + dx, c[1] + dy}] {
-					if math.Hypot(nodes[n].p.X-p.X, nodes[n].p.Y-p.Y) <= tol {
+					if math.Hypot(pts[n].X-p.X, pts[n].Y-p.Y) <= tol {
 						return n
 					}
 				}
 			}
 		}
-		nodes = append(nodes, node{p: p})
-		i := len(nodes) - 1
-		index[c] = append(index[c], i)
-		return i
+		pts = append(pts, p)
+		index[c] = append(index[c], len(pts)-1)
+		return len(pts) - 1
 	}
 
-	refs := make([]endRef, 0, len(segs))
-	for i, s := range segs {
+	// 2. One edge per pair of nodes.
+	type edge struct{ a, b int }
+	var edges []edge
+	seen := map[edge]bool{}
+	for _, s := range segs {
 		a, b := nodeAt(s.A), nodeAt(s.B)
 		if a == b {
-			refs = append(refs, endRef{-1, -1}) // zero length after snapping
+			continue // shorter than the tolerance
+		}
+		if a > b {
+			a, b = b, a
+		}
+		if seen[edge{a, b}] {
 			continue
 		}
-		refs = append(refs, endRef{a, b})
-		nodes[a].segs = append(nodes[a].segs, i)
-		nodes[b].segs = append(nodes[b].segs, i)
+		seen[edge{a, b}] = true
+		edges = append(edges, edge{a, b})
 	}
 
-	used := make([]bool, len(segs))
+	at := make([][]int, len(pts)) // node -> edges touching it
+	for i, e := range edges {
+		at[e.a] = append(at[e.a], i)
+		at[e.b] = append(at[e.b], i)
+	}
+
+	// 3. Peel away everything that ends in the air.
+	gone := make([]bool, len(edges))
+	degree := make([]int, len(pts))
+	var leaves []int
+	for n := range pts {
+		degree[n] = len(at[n])
+		if degree[n] == 1 {
+			leaves = append(leaves, n)
+		}
+	}
+	open := (len(leaves) + 1) / 2 // an open chain has two loose ends, a spur one
+	for len(leaves) > 0 {
+		n := leaves[len(leaves)-1]
+		leaves = leaves[:len(leaves)-1]
+		if degree[n] != 1 {
+			continue
+		}
+		for _, e := range at[n] {
+			if gone[e] {
+				continue
+			}
+			gone[e] = true
+			other := edges[e].a
+			if other == n {
+				other = edges[e].b
+			}
+			degree[n]--
+			degree[other]--
+			if degree[other] == 1 {
+				leaves = append(leaves, other)
+			}
+		}
+	}
+
+	// 4. Walk what is left.
 	var rings []geom.Polygon
-	openCount := 0
+	emit := func(nodes []int) {
+		if len(nodes) < 3 {
+			return
+		}
+		ring := make(geom.Polygon, len(nodes))
+		for i, n := range nodes {
+			ring[i] = pts[n]
+		}
+		rings = append(rings, ring)
+	}
+	nextAt := func(n int) int {
+		for _, e := range at[n] {
+			if !gone[e] {
+				return e
+			}
+		}
+		return -1
+	}
 
-	for start := range segs {
-		if used[start] || refs[start].a < 0 {
+	for start := range edges {
+		if gone[start] {
 			continue
 		}
-		used[start] = true
-		first := refs[start].a
-		cur := refs[start].b
-		chain := []geom.Point{nodes[first].p, nodes[cur].p}
-
-		for cur != first {
-			next := -1
-			for _, s := range nodes[cur].segs {
-				if !used[s] && refs[s].a >= 0 {
-					next = s
-					break
-				}
-			}
-			if next < 0 {
-				break // dead end: this chain does not close
-			}
-			used[next] = true
-			if refs[next].a == cur {
-				cur = refs[next].b
+		cur := edges[start].a
+		chain := []int{cur}
+		pos := map[int]int{cur: 0}
+		for e := start; e >= 0; e = nextAt(cur) {
+			gone[e] = true
+			if edges[e].a == cur {
+				cur = edges[e].b
 			} else {
-				cur = refs[next].a
+				cur = edges[e].a
 			}
-			chain = append(chain, nodes[cur].p)
+			if k, back := pos[cur]; back {
+				emit(chain[k:]) // the loop just closed
+				for _, n := range chain[k+1:] {
+					delete(pos, n)
+				}
+				chain = chain[:k+1]
+			} else {
+				pos[cur] = len(chain)
+				chain = append(chain, cur)
+			}
 		}
-
-		if cur == first {
-			if len(chain) > 3 {
-				rings = append(rings, geom.Polygon(chain[:len(chain)-1]))
-			}
-		} else {
-			openCount++
+		if len(chain) > 1 {
+			open++ // a path between two junctions that closed nothing
 		}
 	}
-	return rings, openCount
+	return rings, open
 }

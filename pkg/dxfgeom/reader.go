@@ -205,6 +205,11 @@ func Read(r io.Reader, opt Options) (*Drawing, error) {
 			curBlock = ""
 			cur = &entity{typ: "BLOCK"}
 		case "ENDBLK":
+			if cur != nil && cur.typ == "BLOCK" { // a block with nothing in it
+				name, _ := cur.first(2)
+				blocks[blockKey(name)] = nil
+				cur = nil
+			}
 			flush()
 			curBlock = ""
 		case "EOF":
@@ -215,7 +220,7 @@ func Read(r io.Reader, opt Options) (*Drawing, error) {
 			// (code 2) and base point are known by then.
 			if cur != nil && cur.typ == "BLOCK" {
 				name, _ := cur.first(2)
-				curBlock = strings.TrimSpace(name)
+				curBlock = blockKey(name)
 				blockBase[curBlock] = geom.Point{X: cur.num(10, 0), Y: cur.num(20, 0)}
 				if _, ok := blocks[curBlock]; !ok {
 					blocks[curBlock] = nil
@@ -251,7 +256,7 @@ func Read(r io.Reader, opt Options) (*Drawing, error) {
 	for _, l := range opt.IgnoreLayers {
 		st.ignore[strings.ToLower(strings.TrimSpace(l))] = true
 	}
-	st.run(entities, transform{sx: scale, sy: scale}, 0)
+	st.run(entities, scaling(scale, scale), 0)
 
 	d.Segments = st.segments
 	for _, s := range d.Segments {
@@ -269,6 +274,9 @@ func Read(r io.Reader, opt Options) (*Drawing, error) {
 	return d, nil
 }
 
+// blockKey makes block names comparable: DXF does not tell "Door" from "DOOR".
+func blockKey(name string) string { return strings.ToUpper(strings.TrimSpace(name)) }
+
 func readPairs(r io.Reader) ([]pair, error) {
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
@@ -279,13 +287,17 @@ func readPairs(r io.Reader) ([]pair, error) {
 	if err := sc.Err(); err != nil {
 		return nil, err
 	}
+	if len(lines) > 0 && strings.HasPrefix(lines[0], "AutoCAD Binary DXF") {
+		return nil, fmt.Errorf("dxfgeom: binary DXF is not supported; save the drawing as ASCII DXF")
+	}
 	out := make([]pair, 0, len(lines)/2)
 	for i := 0; i+1 < len(lines); i += 2 {
 		code, err := strconv.Atoi(strings.TrimSpace(lines[i]))
 		if err != nil {
 			continue // a stray line: skip this pair and carry on
 		}
-		out = append(out, pair{code: code, val: lines[i+1]})
+		// Some writers pad values with spaces; nothing read here needs them.
+		out = append(out, pair{code: code, val: strings.TrimSpace(lines[i+1])})
 	}
 	return out, nil
 }
@@ -358,27 +370,51 @@ func sortedCounts(m map[string]int) []string {
 
 // ---- turning entities into segments ----
 
-// transform is the placement of a block: scale, then rotation, then move.
+// transform is a full 2D affine map:
+//
+//	x' = a*x + c*y + tx
+//	y' = b*x + d*y + ty
+//
+// A matrix, not "scale, rotation, move": a mirrored block placed inside a
+// rotated one is a shear of neither kind, and only the matrix gets it right.
 type transform struct {
-	sx, sy float64
-	rotDeg float64
-	tx, ty float64
+	a, b, c, d, tx, ty float64
+}
+
+func scaling(sx, sy float64) transform { return transform{a: sx, d: sy} }
+
+func moving(dx, dy float64) transform { return transform{a: 1, d: 1, tx: dx, ty: dy} }
+
+func rotating(deg float64) transform {
+	rad := deg * math.Pi / 180
+	s, c := math.Sin(rad), math.Cos(rad)
+	return transform{a: c, b: s, c: -s, d: c}
+}
+
+// mirrorX is what an entity drawn "from behind" needs (extrusion 0,0,-1):
+// its X axis points the other way.
+func mirrorX() transform { return transform{a: -1, d: 1} }
+
+// then returns the map that applies t first and next after it.
+func (t transform) then(next transform) transform {
+	return transform{
+		a:  next.a*t.a + next.c*t.b,
+		b:  next.b*t.a + next.d*t.b,
+		c:  next.a*t.c + next.c*t.d,
+		d:  next.b*t.c + next.d*t.d,
+		tx: next.a*t.tx + next.c*t.ty + next.tx,
+		ty: next.b*t.tx + next.d*t.ty + next.ty,
+	}
 }
 
 func (t transform) apply(p geom.Point) geom.Point {
-	x, y := p.X*t.sx, p.Y*t.sy
-	if t.rotDeg != 0 {
-		rad := t.rotDeg * math.Pi / 180
-		s, c := math.Sin(rad), math.Cos(rad)
-		x, y = x*c-y*s, x*s+y*c
-	}
-	return geom.Point{X: x + t.tx, Y: y + t.ty}
+	return geom.Point{X: t.a*p.X + t.c*p.Y + t.tx, Y: t.b*p.X + t.d*p.Y + t.ty}
 }
 
-// scaleOf is how much lengths grow under this transform, used to keep the
+// scaleOf is the most this map stretches a length, used to keep the
 // flattening tolerance right inside scaled blocks.
 func (t transform) scaleOf() float64 {
-	return math.Max(math.Abs(t.sx), math.Abs(t.sy))
+	return math.Max(math.Hypot(t.a, t.b), math.Hypot(t.c, t.d))
 }
 
 var skipTypes = map[string]bool{
@@ -388,14 +424,14 @@ var skipTypes = map[string]bool{
 }
 
 type flattener struct {
-	opt      Options
-	blocks   map[string][]entity
-	base     map[string]geom.Point
-	ignore   map[string]bool
-	segments []Segment
-	skipped  map[string]int
-	warnings []string
-	openWarn bool
+	opt       Options
+	blocks    map[string][]entity
+	base      map[string]geom.Point
+	ignore    map[string]bool
+	segments  []Segment
+	skipped   map[string]int
+	warnings  []string
+	fitWarned bool
 }
 
 func (f *flattener) add(layer string, t transform, pts []geom.Point) {
@@ -422,11 +458,22 @@ func (f *flattener) run(entities []entity, t transform, depth int) {
 		if f.ignore[strings.ToLower(strings.TrimSpace(e.layer()))] {
 			continue
 		}
+		if e.integer(67, 0) == 1 {
+			continue // paper space: title blocks and viewports, not the part
+		}
 		if skipTypes[e.typ] {
 			f.skipped[e.typ]++
 			continue
 		}
 		layer := e.layer()
+
+		// Arcs, circles and polylines are stored in their own plane. Seen
+		// "from behind" (extrusion 0,0,-1) that plane's X axis is flipped;
+		// ignoring it draws those arcs mirrored, a classic DXF trap.
+		flat := t
+		if e.num(230, 1) < 0 {
+			flat = mirrorX().then(t)
+		}
 
 		switch e.typ {
 		case "LINE":
@@ -438,15 +485,19 @@ func (f *flattener) run(entities []entity, t transform, depth int) {
 		case "LWPOLYLINE":
 			verts := lwVertices(e)
 			closed := e.integer(70, 0)&1 == 1
-			f.add(layer, t, polylinePoints(verts, closed, sag))
+			f.add(layer, flat, polylinePoints(verts, closed, sag))
 
 		case "POLYLINE":
-			closed := e.integer(70, 0)&1 == 1
-			f.add(layer, t, polylinePoints(e.verts, closed, sag))
+			flags := e.integer(70, 0)
+			if flags&(16|64) != 0 {
+				f.skipped["POLYLINE (mesh)"]++ // 3D meshes are not outlines
+				continue
+			}
+			f.add(layer, flat, polylinePoints(e.verts, flags&1 == 1, sag))
 
 		case "CIRCLE":
 			c := geom.Point{X: e.num(10, 0), Y: e.num(20, 0)}
-			f.add(layer, t, arcPoints(c, e.num(40, 0), 0, 2*math.Pi, sag))
+			f.add(layer, flat, arcPoints(c, e.num(40, 0), 0, 2*math.Pi, sag))
 
 		case "ARC":
 			c := geom.Point{X: e.num(10, 0), Y: e.num(20, 0)}
@@ -455,16 +506,21 @@ func (f *flattener) run(entities []entity, t transform, depth int) {
 			for end < start {
 				end += 2 * math.Pi
 			}
-			f.add(layer, t, arcPoints(c, e.num(40, 0), start, end-start, sag))
+			f.add(layer, flat, arcPoints(c, e.num(40, 0), start, end-start, sag))
 
 		case "ELLIPSE":
 			f.add(layer, t, ellipsePoints(e, sag))
 
 		case "SPLINE":
-			f.add(layer, t, splinePoints(e, sag))
+			pts, fitOnly := splinePoints(e, sag)
+			if fitOnly && !f.fitWarned {
+				f.fitWarned = true
+				f.warnings = append(f.warnings, "a spline came with fit points only and was joined with straight lines")
+			}
+			f.add(layer, t, pts)
 
 		case "INSERT":
-			f.insert(e, t, depth)
+			f.insert(e, flat, depth)
 
 		case "BLOCK", "ENDBLK", "SEQEND", "VERTEX":
 			// structural, nothing to draw
@@ -476,8 +532,9 @@ func (f *flattener) run(entities []entity, t transform, depth int) {
 }
 
 func (f *flattener) insert(e entity, t transform, depth int) {
-	name := strings.TrimSpace(mustStr(e.first(2)))
-	body, ok := f.blocks[name]
+	name, _ := e.first(2)
+	key := blockKey(name)
+	body, ok := f.blocks[key]
 	if !ok {
 		f.warnings = append(f.warnings, fmt.Sprintf("block %q used but not defined in the file", name))
 		return
@@ -489,7 +546,7 @@ func (f *flattener) insert(e entity, t transform, depth int) {
 	if sy == 0 {
 		sy = 1
 	}
-	rot := e.num(50, 0)
+	rot := rotating(e.num(50, 0))
 	cols, rows := e.integer(70, 1), e.integer(71, 1)
 	if cols < 1 {
 		cols = 1
@@ -498,41 +555,20 @@ func (f *flattener) insert(e entity, t transform, depth int) {
 		rows = 1
 	}
 	colSp, rowSp := e.num(44, 0), e.num(45, 0)
-	base := f.base[name]
+	base := f.base[key]
 
+	// In order: put the block's base point at the origin, scale, turn, and
+	// move to where the INSERT says. A repeated insert steps along the
+	// turned axes, so the whole grid turns with it.
+	body0 := moving(-base.X, -base.Y).then(scaling(sx, sy)).then(rot)
 	for c := 0; c < cols; c++ {
 		for r := 0; r < rows; r++ {
-			// The block's base point goes where the INSERT says, so the
-			// body is shifted by -base before being scaled and turned.
-			local := transform{sx: sx, sy: sy, rotDeg: rot,
-				tx: e.num(10, 0) + float64(c)*colSp,
-				ty: e.num(20, 0) + float64(r)*rowSp,
-			}
-			shifted := transform{sx: 1, sy: 1, tx: -base.X, ty: -base.Y}
-			f.run(body, compose(t, compose(local, shifted)), depth+1)
+			step := rot.apply(geom.Point{X: float64(c) * colSp, Y: float64(r) * rowSp})
+			place := moving(e.num(10, 0)+step.X, e.num(20, 0)+step.Y)
+			f.run(body, body0.then(place).then(t), depth+1)
 		}
 	}
 }
-
-// compose returns the transform that applies inner first, then outer.
-func compose(outer, inner transform) transform {
-	// Only the cases EngTree produces are needed: a scale and rotation
-	// around the origin, then a move. Composing those keeps that shape as
-	// long as the scales are uniform; where they are not, the inner scale
-	// wins, which is what CAD files do in practice.
-	rad := outer.rotDeg * math.Pi / 180
-	s, c := math.Sin(rad), math.Cos(rad)
-	x, y := inner.tx*outer.sx, inner.ty*outer.sy
-	return transform{
-		sx:     outer.sx * inner.sx,
-		sy:     outer.sy * inner.sy,
-		rotDeg: outer.rotDeg + inner.rotDeg,
-		tx:     outer.tx + x*c - y*s,
-		ty:     outer.ty + x*s + y*c,
-	}
-}
-
-func mustStr(v string, _ bool) string { return v }
 
 // lwVertices reads an LWPOLYLINE in file order: x, then y, with an optional
 // bulge belonging to the vertex it follows.
@@ -630,6 +666,11 @@ func arcSteps(r, sweep, sag float64) int {
 		return 64
 	}
 	n := int(math.Ceil(sweep / maxAng))
+	// Never coarser than 12 pieces to the full turn, however small the
+	// radius: a 1 mm hole should still look and nest like a circle.
+	if min := int(math.Ceil(sweep / (math.Pi / 6))); n < min {
+		n = min
+	}
 	if n < 1 {
 		n = 1
 	}
@@ -654,6 +695,9 @@ func ellipsePoints(e entity, sag float64) []geom.Point {
 	c := geom.Point{X: e.num(10, 0), Y: e.num(20, 0)}
 	mx, my := e.num(11, 0), e.num(21, 0)
 	ratio := e.num(40, 1)
+	if e.num(230, 1) < 0 {
+		ratio = -ratio // seen from behind, the ellipse runs the other way
+	}
 	start, end := e.num(41, 0), e.num(42, 2*math.Pi)
 	major := math.Hypot(mx, my)
 	if major == 0 {
@@ -677,7 +721,7 @@ func ellipsePoints(e entity, sag float64) []geom.Point {
 
 // splinePoints walks a B-spline. Rational splines (with weights) are
 // handled too; a spline given only by fit points is joined straight.
-func splinePoints(e entity, sag float64) []geom.Point {
+func splinePoints(e entity, sag float64) (pts []geom.Point, fitOnly bool) {
 	xs, ys := e.floats(10), e.floats(20)
 	n := len(xs)
 	if len(ys) < n {
@@ -689,18 +733,18 @@ func splinePoints(e entity, sag float64) []geom.Point {
 		if len(fy) < m {
 			m = len(fy)
 		}
-		pts := make([]geom.Point, 0, m)
+		pts = make([]geom.Point, 0, m)
 		for i := 0; i < m; i++ {
 			pts = append(pts, geom.Point{X: fx[i], Y: fy[i]})
 		}
-		return pts
+		return pts, m > 0
 	}
 	ctrl := make([]geom.Point, n)
 	for i := 0; i < n; i++ {
 		ctrl[i] = geom.Point{X: xs[i], Y: ys[i]}
 	}
 	if n == 1 {
-		return ctrl
+		return ctrl, false
 	}
 	degree := e.integer(71, 3)
 	if degree < 1 {
@@ -729,20 +773,22 @@ func splinePoints(e entity, sag float64) []geom.Point {
 	if steps < 16 {
 		steps = 16
 	}
-	if steps > 2048 {
-		steps = 2048
+	if steps > 8192 {
+		steps = 8192
 	}
 
 	lo, hi := knots[degree], knots[n]
-	pts := make([]geom.Point, 0, steps+1)
+	pts = make([]geom.Point, 0, steps+1)
 	for i := 0; i <= steps; i++ {
 		u := lo + (hi-lo)*float64(i)/float64(steps)
 		if i == steps {
-			u = hi - 1e-12
+			// The basis functions are defined on [knot, next knot), so the
+			// very end is taken a hair before it, whatever the knots' size.
+			u = math.Nextafter(hi, lo)
 		}
 		pts = append(pts, deBoor(u, degree, knots, ctrl, weights))
 	}
-	return pts
+	return pts, false
 }
 
 func uniformKnots(n, degree int) []float64 {
