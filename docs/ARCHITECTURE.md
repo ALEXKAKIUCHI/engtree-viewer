@@ -49,6 +49,7 @@ modules can import them.
 | `pkg/geom/geom.go` | Point, Rect, Polygon (area, direction, containment, rotate), Contour |
 | `pkg/dxfgeom/reader.go` | DXF entities to flat segments: bulges, blocks, splines, units |
 | `pkg/dxfgeom/contours.go` | Segments joined into closed rings, outlines and holes told apart |
+| `pkg/dxfgeom/curve.go` | The curves as drawn (line, arc, ellipse, spline), kept beside the flat segments |
 | `extension/extension.go` | The `CutPlanner` interface and its registry |
 
 ## Matching files to codes

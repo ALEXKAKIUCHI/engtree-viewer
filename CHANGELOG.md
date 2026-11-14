@@ -11,6 +11,10 @@
   turns a drawing into flat segments and into closed contours (outline plus
   holes, wound the right way). The viewer now draws through it, so what is
   shown and what would be cut cannot drift apart
+- `pkg/dxfgeom` keeps the curves as drawn: `Drawing.Curves` holds every
+  line, arc, ellipse and spline, each segment says which curve it was cut
+  from, and `Shapes` returns every closed contour with the curves that make
+  it up. A drawing can be written back out with true arcs
 
 ## 0.2.0 — 2026-11-12
 

@@ -6,6 +6,10 @@
 // CIRCLE, LWPOLYLINE (bulges included), POLYLINE, ELLIPSE, SPLINE and
 // INSERT (blocks, with their scale and rotation). Text, dimensions and
 // hatches are skipped, and so are any layers the caller names.
+//
+// The curves themselves are kept too (see Curve): every segment knows
+// which line, arc, ellipse or spline it was cut from, so a program that
+// writes a drawing back out can write true arcs instead of short lines.
 package dxfgeom
 
 import (
@@ -56,11 +60,17 @@ type Segment struct {
 	A     geom.Point `json:"a"`
 	B     geom.Point `json:"b"`
 	Layer string     `json:"layer,omitempty"`
+	// Curve is the index in Drawing.Curves of the curve this piece was
+	// cut from.
+	Curve int `json:"-"`
 }
 
 // Drawing is everything useful that came out of the file.
 type Drawing struct {
 	Segments []Segment `json:"segments"`
+	// Curves are the drawing's lines, arcs, ellipses and splines as they
+	// were drawn, already in millimetres and with block placement applied.
+	Curves   []Curve   `json:"-"`
 	Bounds   geom.Rect `json:"bounds"`
 	Units    string    `json:"units"`              // what the coordinates were converted from
 	Warnings []string  `json:"warnings,omitempty"` // things the user should know
@@ -259,6 +269,7 @@ func Read(r io.Reader, opt Options) (*Drawing, error) {
 	st.run(entities, scaling(scale, scale), 0)
 
 	d.Segments = st.segments
+	d.Curves = st.curves
 	for _, s := range d.Segments {
 		d.Bounds.Add(s.A)
 		d.Bounds.Add(s.B)
@@ -429,18 +440,49 @@ type flattener struct {
 	base      map[string]geom.Point
 	ignore    map[string]bool
 	segments  []Segment
+	curves    []Curve
 	skipped   map[string]int
 	warnings  []string
 	fitWarned bool
 }
 
-func (f *flattener) add(layer string, t transform, pts []geom.Point) {
+// add records one curve and the straight pieces it was flattened into.
+// pts are in the entity's own space; c is already in the drawing's.
+func (f *flattener) add(layer string, t transform, pts []geom.Point, c Curve) {
+	c.Layer = layer
+	idx := len(f.curves)
+	used := false
 	for i := 0; i+1 < len(pts); i++ {
 		a, b := t.apply(pts[i]), t.apply(pts[i+1])
 		if a == b {
 			continue
 		}
-		f.segments = append(f.segments, Segment{A: a, B: b, Layer: layer})
+		f.segments = append(f.segments, Segment{A: a, B: b, Layer: layer, Curve: idx})
+		used = true
+	}
+	if used {
+		f.curves = append(f.curves, c)
+	}
+}
+
+// addPolyline adds a polyline span by span: each straight span is a line
+// and each bulged span an arc of its own.
+func (f *flattener) addPolyline(layer string, t transform, verts []vertex, closed bool, sag float64) {
+	n := len(verts)
+	spans := n - 1
+	// Two vertices and a bulge each is how a circle is written as a
+	// polyline, so a closing span is drawn from two vertices up.
+	if closed && n >= 2 {
+		spans = n
+	}
+	for i := 0; i < spans; i++ {
+		v, end := verts[i], verts[(i+1)%n].p
+		pts := append([]geom.Point{v.p}, spanPoints(v, end, sag)...)
+		c := lineCurve(t.apply(v.p), t.apply(end))
+		if cen, r, start, sweep, ok := bulgeArc(v.p, end, v.bulge); ok {
+			c = arcCurve(cen, r, start, sweep).transformed(t)
+		}
+		f.add(layer, t, pts, c)
 	}
 }
 
@@ -477,15 +519,14 @@ func (f *flattener) run(entities []entity, t transform, depth int) {
 
 		switch e.typ {
 		case "LINE":
-			f.add(layer, t, []geom.Point{
-				{X: e.num(10, 0), Y: e.num(20, 0)},
-				{X: e.num(11, 0), Y: e.num(21, 0)},
-			})
+			a := geom.Point{X: e.num(10, 0), Y: e.num(20, 0)}
+			b := geom.Point{X: e.num(11, 0), Y: e.num(21, 0)}
+			f.add(layer, t, []geom.Point{a, b}, lineCurve(t.apply(a), t.apply(b)))
 
 		case "LWPOLYLINE":
 			verts := lwVertices(e)
 			closed := e.integer(70, 0)&1 == 1
-			f.add(layer, flat, polylinePoints(verts, closed, sag))
+			f.addPolyline(layer, flat, verts, closed, sag)
 
 		case "POLYLINE":
 			flags := e.integer(70, 0)
@@ -493,11 +534,12 @@ func (f *flattener) run(entities []entity, t transform, depth int) {
 				f.skipped["POLYLINE (mesh)"]++ // 3D meshes are not outlines
 				continue
 			}
-			f.add(layer, flat, polylinePoints(e.verts, flags&1 == 1, sag))
+			f.addPolyline(layer, flat, e.verts, flags&1 == 1, sag)
 
 		case "CIRCLE":
 			c := geom.Point{X: e.num(10, 0), Y: e.num(20, 0)}
-			f.add(layer, flat, arcPoints(c, e.num(40, 0), 0, 2*math.Pi, sag))
+			r := e.num(40, 0)
+			f.add(layer, flat, arcPoints(c, r, 0, 2*math.Pi, sag), arcCurve(c, r, 0, 2*math.Pi).transformed(flat))
 
 		case "ARC":
 			c := geom.Point{X: e.num(10, 0), Y: e.num(20, 0)}
@@ -506,10 +548,11 @@ func (f *flattener) run(entities []entity, t transform, depth int) {
 			for end < start {
 				end += 2 * math.Pi
 			}
-			f.add(layer, flat, arcPoints(c, e.num(40, 0), start, end-start, sag))
+			r := e.num(40, 0)
+			f.add(layer, flat, arcPoints(c, r, start, end-start, sag), arcCurve(c, r, start, end-start).transformed(flat))
 
 		case "ELLIPSE":
-			f.add(layer, t, ellipsePoints(e, sag))
+			f.add(layer, t, ellipsePoints(e, sag), ellipseCurve(e).transformed(t))
 
 		case "SPLINE":
 			pts, fitOnly := splinePoints(e, sag)
@@ -517,7 +560,14 @@ func (f *flattener) run(entities []entity, t transform, depth int) {
 				f.fitWarned = true
 				f.warnings = append(f.warnings, "a spline came with fit points only and was joined with straight lines")
 			}
-			f.add(layer, t, pts)
+			if sp, ok := splineCurve(e); ok {
+				f.add(layer, t, pts, sp.transformed(t))
+			} else {
+				// no control points: the straight joins are all there is
+				for i := 0; i+1 < len(pts); i++ {
+					f.add(layer, t, pts[i:i+2], lineCurve(t.apply(pts[i]), t.apply(pts[i+1])))
+				}
+			}
 
 		case "INSERT":
 			f.insert(e, flat, depth)
@@ -595,23 +645,6 @@ func lwVertices(e entity) []vertex {
 	return out
 }
 
-func polylinePoints(verts []vertex, closed bool, sag float64) []geom.Point {
-	if len(verts) == 0 {
-		return nil
-	}
-	pts := []geom.Point{verts[0].p}
-	last := len(verts) - 1
-	for i := 0; i < last; i++ {
-		pts = append(pts, spanPoints(verts[i], verts[i+1].p, sag)...)
-	}
-	// Two vertices and a bulge each is how a circle is written as a
-	// polyline, so a closing span is drawn from two vertices up.
-	if closed && len(verts) >= 2 {
-		pts = append(pts, spanPoints(verts[last], verts[0].p, sag)...)
-	}
-	return pts
-}
-
 // spanPoints returns the points from v to end, not including v itself.
 func spanPoints(v vertex, end geom.Point, sag float64) []geom.Point {
 	if v.bulge == 0 {
@@ -620,27 +653,35 @@ func spanPoints(v vertex, end geom.Point, sag float64) []geom.Point {
 	return bulgePoints(v.p, end, v.bulge, sag)
 }
 
-// bulgePoints walks the arc that a polyline bulge stands for. The bulge is
-// the tangent of a quarter of the arc's angle; positive turns left.
-func bulgePoints(a, b geom.Point, bulge, sag float64) []geom.Point {
+// bulgeArc works out the arc that a polyline bulge stands for. The bulge
+// is the tangent of a quarter of the arc's angle; positive turns left.
+// ok is false for a straight span.
+func bulgeArc(a, b geom.Point, bulge float64) (c geom.Point, r, start, sweep float64, ok bool) {
 	dx, dy := b.X-a.X, b.Y-a.Y
 	chord := math.Hypot(dx, dy)
-	if chord == 0 {
-		return []geom.Point{b}
+	if bulge == 0 || chord == 0 {
+		return c, 0, 0, 0, false
 	}
 	theta := 4 * math.Atan(bulge)
 	halfSin := math.Sin(theta / 2)
 	if math.Abs(halfSin) < 1e-12 {
-		return []geom.Point{b}
+		return c, 0, 0, 0, false
 	}
-	r := chord / (2 * halfSin)
+	rad := chord / (2 * halfSin)
 	// The centre sits on the left of a->b for a positive bulge.
 	mx, my := (a.X+b.X)/2, (a.Y+b.Y)/2
-	d := r * math.Cos(theta/2)
-	cx, cy := mx-dy/chord*d, my+dx/chord*d
-	c := geom.Point{X: cx, Y: cy}
-	start := math.Atan2(a.Y-cy, a.X-cx)
-	pts := arcPoints(c, math.Abs(r), start, theta, sag)
+	d := rad * math.Cos(theta/2)
+	c = geom.Point{X: mx - dy/chord*d, Y: my + dx/chord*d}
+	return c, math.Abs(rad), math.Atan2(a.Y-c.Y, a.X-c.X), theta, true
+}
+
+// bulgePoints walks that arc from a to b, not including a itself.
+func bulgePoints(a, b geom.Point, bulge, sag float64) []geom.Point {
+	c, r, start, sweep, ok := bulgeArc(a, b, bulge)
+	if !ok {
+		return []geom.Point{b}
+	}
+	pts := arcPoints(c, r, start, sweep, sag)
 	if len(pts) > 0 {
 		pts[len(pts)-1] = b // land exactly on the vertex
 		return pts[1:]
@@ -739,27 +780,18 @@ func splinePoints(e entity, sag float64) (pts []geom.Point, fitOnly bool) {
 		}
 		return pts, m > 0
 	}
-	ctrl := make([]geom.Point, n)
-	for i := 0; i < n; i++ {
-		ctrl[i] = geom.Point{X: xs[i], Y: ys[i]}
-	}
 	if n == 1 {
-		return ctrl, false
+		return []geom.Point{{X: xs[0], Y: ys[0]}}, false
 	}
-	degree := e.integer(71, 3)
-	if degree < 1 {
-		degree = 3
-	}
-	if degree > n-1 {
-		degree = n - 1
-	}
-	knots := e.floats(40)
-	if len(knots) != n+degree+1 {
-		knots = uniformKnots(n, degree)
-	}
-	weights := e.floats(41)
-	if len(weights) != n {
-		weights = nil
+	c, _ := splineCurve(e)
+	return splineSample(c.Control, c.Degree, c.Knots, c.Weights, sag), false
+}
+
+// splineSample walks a B-spline given by its control points.
+func splineSample(ctrl []geom.Point, degree int, knots, weights []float64, sag float64) []geom.Point {
+	n := len(ctrl)
+	if n < 2 || degree < 1 || len(knots) != n+degree+1 {
+		return ctrl
 	}
 
 	// Enough samples for the control polygon to be followed closely; the
@@ -778,7 +810,7 @@ func splinePoints(e entity, sag float64) (pts []geom.Point, fitOnly bool) {
 	}
 
 	lo, hi := knots[degree], knots[n]
-	pts = make([]geom.Point, 0, steps+1)
+	pts := make([]geom.Point, 0, steps+1)
 	for i := 0; i <= steps; i++ {
 		u := lo + (hi-lo)*float64(i)/float64(steps)
 		if i == steps {
@@ -788,7 +820,7 @@ func splinePoints(e entity, sag float64) (pts []geom.Point, fitOnly bool) {
 		}
 		pts = append(pts, deBoor(u, degree, knots, ctrl, weights))
 	}
-	return pts, false
+	return pts
 }
 
 func uniformKnots(n, degree int) []float64 {
