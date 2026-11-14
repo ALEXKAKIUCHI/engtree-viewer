@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- The program is now a package (`app`) started by `cmd/engtree`, so another
+  build can add features through the new `extension` package. The free build
+  registers none, and there is no flag or licence check anywhere here
+- New `pkg/geom`: points, rings and holes in millimetres
+- New `pkg/dxfgeom`: a real DXF reader — bulges, blocks (INSERT) with scale
+  and rotation, ellipses, splines, `$INSUNITS`, layers to ignore — that
+  turns a drawing into flat segments and into closed contours (outline plus
+  holes, wound the right way). The viewer now draws through it, so what is
+  shown and what would be cut cannot drift apart
+
 ## 0.2.0 — 2026-11-12
 
 - **Revisions**: the shop floor asks engineering to fix a part, the part shows

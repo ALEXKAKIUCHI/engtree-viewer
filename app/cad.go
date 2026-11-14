@@ -1,10 +1,12 @@
-package main
+package app
 
 import (
 	"math"
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/ALEXKAKIUCHI/engtree-viewer/pkg/dxfgeom"
 )
 
 type Segment2D struct {
@@ -24,136 +26,25 @@ type DXFData struct {
 	MaxY     float64     `json:"max_y"`
 }
 
-func parseDXF(path string) DXFData {
-	var out DXFData
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return out
+// dxfView reads a DXF for the viewer. The file is parsed by pkg/dxfgeom,
+// the same reader the cutting side uses, so what is drawn on screen and
+// what gets cut can never drift apart.
+func dxfView(path string) DXFData {
+	d, err := dxfgeom.ReadFile(path, dxfgeom.Options{})
+	if err != nil || len(d.Segments) == 0 {
+		return DXFData{}
 	}
-	lines := strings.Split(strings.ReplaceAll(string(raw), "\r\n", "\n"), "\n")
-	minX, minY := math.MaxFloat64, math.MaxFloat64
-	maxX, maxY := -math.MaxFloat64, -math.MaxFloat64
-
-	addSeg := func(x1, y1, x2, y2 float64) {
-		out.Segments = append(out.Segments, Segment2D{X1: x1, Y1: y1, X2: x2, Y2: y2})
-		for _, x := range []float64{x1, x2} {
-			if x < minX {
-				minX = x
-			}
-			if x > maxX {
-				maxX = x
-			}
-		}
-		for _, y := range []float64{y1, y2} {
-			if y < minY {
-				minY = y
-			}
-			if y > maxY {
-				maxY = y
-			}
-		}
+	out := DXFData{
+		Segments: make([]Segment2D, 0, len(d.Segments)),
+		Width:    d.Bounds.Width(),
+		Height:   d.Bounds.Height(),
+		MinX:     d.Bounds.MinX,
+		MinY:     d.Bounds.MinY,
+		MaxX:     d.Bounds.MaxX,
+		MaxY:     d.Bounds.MaxY,
 	}
-
-	inEntities := false
-	i := 0
-	for i+1 < len(lines) {
-		code := strings.TrimSpace(lines[i])
-		val := strings.TrimSpace(lines[i+1])
-		i += 2
-
-		if code == "2" && val == "ENTITIES" {
-			inEntities = true
-			continue
-		}
-		if code == "0" && val == "ENDSEC" && inEntities {
-			break
-		}
-		if !inEntities || code != "0" {
-			continue
-		}
-
-		entType := val
-		var x1, y1, x2, y2, cx, cy, r, sa, ea float64
-		var polyX, polyY []float64
-		closed := false
-
-		for i+1 < len(lines) {
-			c := strings.TrimSpace(lines[i])
-			if c == "0" {
-				break
-			}
-			v := strings.TrimSpace(lines[i+1])
-			i += 2
-			num, _ := strconv.ParseFloat(v, 64)
-			switch c {
-			case "10":
-				if entType == "LWPOLYLINE" {
-					polyX = append(polyX, num)
-				} else {
-					x1, cx = num, num
-				}
-			case "20":
-				if entType == "LWPOLYLINE" {
-					polyY = append(polyY, num)
-				} else {
-					y1, cy = num, num
-				}
-			case "11":
-				x2 = num
-			case "21":
-				y2 = num
-			case "40":
-				r = num
-			case "50":
-				sa = num
-			case "51":
-				ea = num
-			case "70":
-				if int(num)&1 == 1 {
-					closed = true
-				}
-			}
-		}
-
-		switch entType {
-		case "LINE":
-			addSeg(x1, y1, x2, y2)
-		case "LWPOLYLINE":
-			n := len(polyX)
-			if len(polyY) < n {
-				n = len(polyY)
-			}
-			for k := 0; k+1 < n; k++ {
-				addSeg(polyX[k], polyY[k], polyX[k+1], polyY[k+1])
-			}
-			if closed && n > 2 {
-				addSeg(polyX[n-1], polyY[n-1], polyX[0], polyY[0])
-			}
-		case "CIRCLE":
-			steps := 36
-			for k := 0; k < steps; k++ {
-				a1 := 2 * math.Pi * float64(k) / float64(steps)
-				a2 := 2 * math.Pi * float64(k+1) / float64(steps)
-				addSeg(cx+r*math.Cos(a1), cy+r*math.Sin(a1), cx+r*math.Cos(a2), cy+r*math.Sin(a2))
-			}
-		case "ARC":
-			if ea < sa {
-				ea += 360
-			}
-			steps := 24
-			for k := 0; k < steps; k++ {
-				a1 := (sa + (ea-sa)*float64(k)/float64(steps)) * math.Pi / 180
-				a2 := (sa + (ea-sa)*float64(k+1)/float64(steps)) * math.Pi / 180
-				addSeg(cx+r*math.Cos(a1), cy+r*math.Sin(a1), cx+r*math.Cos(a2), cy+r*math.Sin(a2))
-			}
-		}
-	}
-
-	if len(out.Segments) > 0 {
-		out.MinX, out.MinY = minX, minY
-		out.MaxX, out.MaxY = maxX, maxY
-		out.Width = maxX - minX
-		out.Height = maxY - minY
+	for _, s := range d.Segments {
+		out.Segments = append(out.Segments, Segment2D{X1: s.A.X, Y1: s.A.Y, X2: s.B.X, Y2: s.B.Y})
 	}
 	return out
 }

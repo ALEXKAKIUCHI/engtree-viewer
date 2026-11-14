@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"embed"
@@ -317,7 +317,9 @@ func launchWindow(url string) {
 
 // ---- Main ----
 
-func main() {
+// Run starts the local server and opens the window. It returns when the
+// window is closed (see watchForWindowClose).
+func Run() {
 	port := flag.Int("port", 0, "fixed local port (default: random free port)")
 	noWindow := flag.Bool("no-window", false, "do not open a window and do not exit when idle (for development)")
 	flag.Parse()
@@ -543,7 +545,7 @@ func main() {
 			return
 		}
 		if strings.ToLower(r.URL.Query().Get("kind")) == "dxf" {
-			writeJSON(w, parseDXF(p))
+			writeJSON(w, dxfView(p))
 		} else {
 			writeJSON(w, parseIGES(p))
 		}

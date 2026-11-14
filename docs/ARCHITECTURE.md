@@ -11,21 +11,45 @@ ui/index.html                                   Go server
 2. The UI only talks to the local API; all disk and network reads happen in Go.
 3. Closing the window sends `/api/closing`; the server exits 5 s later (or after 3 min without requests).
 
+## Layout
+
+```
+cmd/engtree/      the Windows executable (and the icon resource)
+app/              the program itself: app.Run(), the server, the UI
+extension/        where extra features plug in; empty in the free build
+pkg/geom/         points, rings, a ring with its holes (mm)
+pkg/dxfgeom/      DXF -> segments and closed contours
+tools/makeicon/   builds the .syso icon resource
+```
+
+`app` is a package, not a `main`, so another build can register features
+through `extension` and start the same program. Nothing in this repository
+knows whether those features exist: there is no flag, no licence check and
+no `if pro`.
+
+`pkg/geom` and `pkg/dxfgeom` are deliberately outside `internal/`, so other
+modules can import them.
+
 ## Files
 
 | File | Role |
 |---|---|
-| `main.go` | Product list, routes, folder reachability, path safety, window launch, auto exit |
-| `config.go` | Settings (`engtree.json`), defaults, portable mode, shared settings file, modes |
-| `sheets.go` | Reads .csv/.txt (delimiter and encoding detection) and dispatches .xlsx |
-| `xlsx.go` | Minimal .xlsx reader (first sheet) |
-| `bom.go` | Product discovery from file names, header matching, details join, tree building |
-| `files.go` | Directory cache, file-type index (exact / prefix keys), attachments, ZIP packages |
-| `parts.go` | Parts index built from all BOMs (per-BOM cache by modification time, read in parallel), Parts tab routes |
-| `revisions.go` | Revision requests: one JSON file each in a shared folder, status, export |
-| `cad.go` | DXF (2D) and IGES (3D curves and trimmed faces) parsing |
-| `taskbar_windows.go` | Own taskbar identity/icon for the browser window |
-| `ui/index.html` | The whole interface |
+| `cmd/engtree/main.go` | calls `app.Run()`; holds `rsrc_windows_amd64.syso` |
+| `app/main.go` | Product list, routes, folder reachability, path safety, window launch, auto exit |
+| `app/config.go` | Settings (`engtree.json`), defaults, portable mode, shared settings file, modes |
+| `app/sheets.go` | Reads .csv/.txt (delimiter and encoding detection) and dispatches .xlsx |
+| `app/xlsx.go` | Minimal .xlsx reader (first sheet) |
+| `app/bom.go` | Product discovery from file names, header matching, details join, tree building |
+| `app/files.go` | Directory cache, file-type index (exact / prefix keys), attachments, ZIP packages |
+| `app/parts.go` | Parts index built from all BOMs (per-BOM cache by modification time, read in parallel), Parts tab routes |
+| `app/revisions.go` | Revision requests: one JSON file each in a shared folder, status, export |
+| `app/cad.go` | The viewer's IGES reader, and the DXF view built on `pkg/dxfgeom` |
+| `app/taskbar_windows.go` | Own taskbar identity/icon for the browser window |
+| `app/ui/index.html` | The whole interface |
+| `pkg/geom/geom.go` | Point, Rect, Polygon (area, direction, containment, rotate), Contour |
+| `pkg/dxfgeom/reader.go` | DXF entities to flat segments: bulges, blocks, splines, units |
+| `pkg/dxfgeom/contours.go` | Segments joined into closed rings, outlines and holes told apart |
+| `extension/extension.go` | The `CutPlanner` interface and its registry |
 
 ## Matching files to codes
 
@@ -81,8 +105,9 @@ cached for 15 s and invalidated after every write.
 
 ## Icon
 
-`assets/app_icon.ico` is embedded through `rsrc_windows_amd64.syso`. After changing the icon:
+`app/assets/app_icon.ico` is embedded through `cmd/engtree/rsrc_windows_amd64.syso`. After changing the icon:
 
 ```
-go run tools/makeicon/main.go assets/app_icon.ico
+go run tools/makeicon/main.go app/assets/app_icon.ico
+move rsrc_windows_amd64.syso cmd\engtree\
 ```

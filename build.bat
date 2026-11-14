@@ -6,7 +6,7 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
-go build -ldflags="-s -w -H=windowsgui" -o EngTreeViewer.exe .
+go build -ldflags="-s -w -H=windowsgui" -o EngTreeViewer.exe .\cmd\engtree
 if exist "EngTreeViewer.exe" (
     echo Built: %CD%\EngTreeViewer.exe
 ) else (
