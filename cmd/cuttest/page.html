@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EngTree cut plan test</title>
+<style>
+  :root { --line:#d5d9e0; --ink:#1c2430; --soft:#5d6878; --bg:#f4f6f9; --card:#fff; --accent:#1f6feb; --ok:#1a7f37; --bad:#c62828; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.45 system-ui, "Segoe UI", sans-serif; color:var(--ink); background:var(--bg); }
+  header { display:flex; align-items:center; gap:16px; padding:10px 20px; background:var(--card); border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  header h1 { font-size:16px; margin:0; }
+  .tabs { display:flex; gap:4px; }
+  .tabs button { border:1px solid var(--line); background:var(--bg); padding:6px 14px; border-radius:6px; cursor:pointer; font:inherit; }
+  .tabs button.on { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .lang { margin-left:auto; }
+  main { display:grid; grid-template-columns:minmax(380px, 460px) 1fr; gap:16px; padding:16px 20px; align-items:start; }
+  @media (max-width: 900px) { main { grid-template-columns:1fr; } }
+  section { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:12px 14px; margin-bottom:12px; }
+  h2 { font-size:13px; text-transform:uppercase; letter-spacing:.04em; color:var(--soft); margin:0 0 8px; }
+  table.grid { width:100%; border-collapse:collapse; }
+  table.grid th { text-align:left; font-weight:600; font-size:12px; color:var(--soft); padding:2px 4px; }
+  table.grid td { padding:1px 2px; }
+  table.grid input[type=text] { width:100%; padding:4px 6px; border:1px solid var(--line); border-radius:4px; font:inherit; }
+  table.grid td.c { text-align:center; width:56px; }
+  table.grid td.x { width:26px; }
+  button { font:inherit; }
+  .mini { border:none; background:none; color:var(--soft); cursor:pointer; padding:2px 6px; }
+  .mini:hover { color:var(--bad); }
+  .link { border:none; background:none; color:var(--accent); cursor:pointer; padding:4px 0; }
+  .hint { color:var(--soft); font-size:12px; margin:6px 0 0; }
+  .set { display:grid; grid-template-columns:1fr 110px; gap:6px 10px; align-items:center; }
+  .set input, .set select { width:100%; padding:4px 6px; border:1px solid var(--line); border-radius:4px; font:inherit; }
+  .actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .go { background:var(--accent); color:#fff; border:none; padding:8px 18px; border-radius:6px; cursor:pointer; font-weight:600; }
+  .stop { background:#fff; color:var(--bad); border:1px solid var(--bad); padding:8px 14px; border-radius:6px; cursor:pointer; }
+  button:disabled { opacity:.45; cursor:default; }
+  .sum { display:flex; gap:18px; flex-wrap:wrap; align-items:baseline; }
+  .sum b { font-size:20px; }
+  .sum span { color:var(--soft); }
+  .badge { padding:2px 10px; border-radius:20px; font-size:12px; font-weight:600; }
+  .badge.ok { background:#dff5e3; color:var(--ok); }
+  .badge.bad { background:#fde3e3; color:var(--bad); }
+  .badge.run { background:#e4eefc; color:var(--accent); }
+  .warn { color:var(--bad); margin:6px 0 0; }
+  .item { border-top:1px solid var(--line); padding:10px 0; }
+  .item:first-child { border-top:none; }
+  .item h3 { font-size:14px; margin:0 0 6px; }
+  .item h3 small { font-weight:400; color:var(--soft); }
+  .item svg { width:100%; height:auto; display:block; background:#fff; }
+  .line { font-family:ui-monospace, Consolas, monospace; font-size:13px; margin:4px 0 0; }
+  details { margin-top:6px; }
+  details summary { cursor:pointer; color:var(--accent); }
+  details ol { margin:6px 0 0; padding-left:26px; font-size:13px; }
+  .empty { color:var(--soft); padding:30px 0; text-align:center; }
+</style>
+</head>
+<body>
+<header>
+  <h1 data-t="title"></h1>
+  <div class="tabs">
+    <button id="tab-linear" onclick="setMode('linear')" data-t="linear"></button>
+    <button id="tab-rectangular" onclick="setMode('rectangular')" data-t="rectangular"></button>
+  </div>
+  <select class="lang" id="lang" onchange="setLang(this.value)">
+    <option value="pt">Português</option>
+    <option value="en">English</option>
+  </select>
+</header>
+<main>
+  <div>
+    <section>
+      <h2 data-t="parts"></h2>
+      <table class="grid" id="parts"></table>
+      <button class="link" onclick="addRow('parts')" data-t="add_row"></button>
+      <p class="hint" data-t="paste_hint"></p>
+    </section>
+    <section>
+      <h2 data-t="stock"></h2>
+      <table class="grid" id="stock"></table>
+      <button class="link" onclick="addRow('stock')" data-t="add_row"></button>
+      <p class="hint" data-t="stock_hint"></p>
+    </section>
+    <section>
+      <h2 data-t="settings"></h2>
+      <div class="set" id="settings"></div>
+    </section>
+    <section class="actions">
+      <button class="go" id="go" onclick="run()" data-t="calculate"></button>
+      <button class="stop" id="stop" onclick="stop()" disabled data-t="stop"></button>
+      <button class="link" onclick="loadExample()" data-t="example"></button>
+      <button class="link" onclick="clearAll()" data-t="clear"></button>
+    </section>
+  </div>
+  <div>
+    <section id="summary"><div class="empty" data-t="nothing_yet"></div></section>
+    <section id="plan" hidden></section>
+  </div>
+</main>
+
+<script>
+// ---------- texts ----------
+const TEXT = {
+  en: {
+    title: 'Cut plan test', linear: 'Linear (bars and tubes)', rectangular: 'Rectangular (sheets)',
+    parts: 'Parts', stock: 'Stock, in order of use', settings: 'Settings', add_row: '+ add row',
+    paste_hint: 'Tab moves to the next cell; at the end of the table it adds a row. Rows copied from a spreadsheet can be pasted.',
+    stock_hint: 'Offcuts first, full size last. Quantity 0 = as many as needed.',
+    calculate: 'Calculate', stop: 'Stop', example: 'Load example', clear: 'Clear',
+    nothing_yet: 'Fill in the parts and the stock, then press Calculate.',
+    id: 'Code', length: 'Length', width: 'Width', qty: 'Qty', rotate: 'Can rotate',
+    kerf: 'Cut width (kerf), mm', start_loss: 'Loss at the start of the bar, mm', end_loss: 'Loss at the end of the bar, mm',
+    min_offcut: 'Shortest offcut worth keeping, mm', time_limit: 'Time limit, s (0 = default)',
+    edge_trim: 'Edge trim, each side, mm', stages: 'Cutting stages', first_cut: 'First cut',
+    auto: 'Planner chooses', along_length: 'Along the length', along_width: 'Along the width',
+    min_offcut_length: 'Smallest offcut worth keeping: length, mm', min_offcut_width: 'Smallest offcut worth keeping: width, mm',
+    running: 'calculating…', verified: 'verified', not_verified: 'failed the verifier', error: 'Error',
+    bars: 'bars', sheets: 'sheets', utilization: 'utilization', left_out: 'Left out (found no stock)',
+    bar: 'Bar', sheet: 'Sheet', remainder: 'remainder', offcut: 'offcut', scrap: 'scrap', no_remainder: 'no remainder',
+    cuts: 'Cut list', stage: 'Stage', at: 'at', from: 'from', to: 'to', times: 'equal',
+    offcuts: 'Offcuts', none: 'none', first: 'first cut', ms: 'ms',
+    need_parts: 'Add at least one part and one stock size.',
+  },
+  pt: {
+    title: 'Teste do plano de corte', linear: 'Linear (barras e tubos)', rectangular: 'Retangular (chapas)',
+    parts: 'Peças', stock: 'Estoque, na ordem de uso', settings: 'Ajustes', add_row: '+ adicionar linha',
+    paste_hint: 'Tab passa para a próxima célula; no fim da tabela, cria uma linha. Dá para colar linhas copiadas de uma planilha.',
+    stock_hint: 'Retalhos primeiro, tamanho inteiro por último. Quantidade 0 = quantas forem necessárias.',
+    calculate: 'Calcular', stop: 'Parar', example: 'Carregar exemplo', clear: 'Limpar',
+    nothing_yet: 'Preencha as peças e o estoque e clique em Calcular.',
+    id: 'Código', length: 'Comp.', width: 'Larg.', qty: 'Qtd', rotate: 'Pode girar',
+    kerf: 'Espessura do corte (kerf), mm', start_loss: 'Perda no início da barra, mm', end_loss: 'Perda no fim da barra, mm',
+    min_offcut: 'Menor sobra que vale guardar, mm', time_limit: 'Limite de tempo, s (0 = padrão)',
+    edge_trim: 'Refilo, em cada lado, mm', stages: 'Etapas de corte', first_cut: 'Primeiro corte',
+    auto: 'O programa escolhe', along_length: 'Ao longo do comprimento', along_width: 'Ao longo da largura',
+    min_offcut_length: 'Menor sobra que vale guardar: comprimento, mm', min_offcut_width: 'Menor sobra que vale guardar: largura, mm',
+    running: 'calculando…', verified: 'verificado', not_verified: 'reprovado no verificador', error: 'Erro',
+    bars: 'barras', sheets: 'chapas', utilization: 'aproveitamento', left_out: 'Ficaram de fora (sem estoque que sirva)',
+    bar: 'Barra', sheet: 'Chapa', remainder: 'sobra', offcut: 'retalho', scrap: 'descarte', no_remainder: 'sem sobra',
+    cuts: 'Lista de cortes', stage: 'Etapa', at: 'em', from: 'de', to: 'a', times: 'iguais',
+    offcuts: 'Sobras', none: 'nenhuma', first: 'primeiro corte', ms: 'ms',
+    need_parts: 'Informe pelo menos uma peça e um tamanho de estoque.',
+  },
+};
+let lang = localStorage.getItem('cuttest.lang') || ((navigator.language || 'en').startsWith('pt') ? 'pt' : 'en');
+const t = k => TEXT[lang][k] ?? k;
+
+// ---------- what each mode asks for ----------
+const MODES = {
+  linear: {
+    parts: [['id', 'id'], ['length', 'length'], ['quantity', 'qty']],
+    stock: [['id', 'id'], ['length', 'length'], ['quantity', 'qty']],
+    settings: [['kerf', 'kerf', 3], ['start_loss', 'start_loss', 0], ['end_loss', 'end_loss', 0],
+               ['min_offcut', 'min_offcut', 300], ['time_limit_sec', 'time_limit', 0]],
+    example: {
+      parts: [['T-850', 850, 12], ['T-1200', 1200, 8], ['T-2310', 2310, 5], ['T-455', 455, 20], ['T-3050', 3050, 3]],
+      stock: [['retalho 2400', 2400, 2], ['barra 6000', 6000, 0]],
+      settings: { kerf: 3, start_loss: 20, end_loss: 150, min_offcut: 300, time_limit_sec: 0 },
+    },
+  },
+  rectangular: {
+    parts: [['id', 'id'], ['length', 'length'], ['width', 'width'], ['quantity', 'qty'], ['can_rotate', 'rotate']],
+    stock: [['id', 'id'], ['length', 'length'], ['width', 'width'], ['quantity', 'qty']],
+    settings: [['kerf', 'kerf', 4], ['edge_trim', 'edge_trim', 10], ['stages', 'stages', 3], ['first_cut', 'first_cut', ''],
+               ['min_offcut_length', 'min_offcut_length', 300], ['min_offcut_width', 'min_offcut_width', 300],
+               ['time_limit_sec', 'time_limit', 0]],
+    example: {
+      parts: [['Lateral', 2100, 550, 4, false], ['Base', 1164, 550, 4, true], ['Prateleira', 1164, 520, 10, true],
+              ['Porta', 2090, 395, 6, false], ['Fundo', 2100, 1190, 2, true], ['Rodapé', 1164, 100, 4, true]],
+      stock: [['retalho', 1300, 900, 1], ['chapa 2750x1830', 2750, 1830, 0]],
+      settings: { kerf: 4, edge_trim: 10, stages: 3, first_cut: '', min_offcut_length: 300, min_offcut_width: 300, time_limit_sec: 0 },
+    },
+  },
+};
+
+// ---------- state ----------
+let mode = localStorage.getItem('cuttest.mode') || 'linear';
+let data = JSON.parse(localStorage.getItem('cuttest.data') || '{}');
+function blank(m) {
+  const settings = {};
+  for (const [key, , def] of MODES[m].settings) settings[key] = def;
+  return { parts: [emptyRow(m, 'parts')], stock: [emptyRow(m, 'stock')], settings };
+}
+function emptyRow(m, table) { return MODES[m][table].map(([key]) => key === 'can_rotate' ? false : ''); }
+for (const m in MODES) if (!data[m]) data[m] = blank(m);
+const save = () => localStorage.setItem('cuttest.data', JSON.stringify(data));
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const num = v => { const n = parseFloat(String(v).replace(',', '.')); return isFinite(n) ? n : 0; };
+const fmt = n => (Math.round(n * 10) / 10).toLocaleString(lang === 'pt' ? 'pt-BR' : 'en-US');
+
+// ---------- input side ----------
+function setLang(l) { lang = l; localStorage.setItem('cuttest.lang', l); drawAll(); }
+function setMode(m) { mode = m; localStorage.setItem('cuttest.mode', m); lastStatus = null; drawAll(); }
+
+function drawAll() {
+  document.documentElement.lang = lang;
+  document.getElementById('lang').value = lang;
+  document.querySelectorAll('[data-t]').forEach(el => el.textContent = t(el.dataset.t));
+  document.title = t('title');
+  for (const m in MODES) document.getElementById('tab-' + m).classList.toggle('on', m === mode);
+  drawTable('parts'); drawTable('stock'); drawSettings(); drawResult();
+}
+
+function drawTable(table) {
+  const cols = MODES[mode][table], rows = data[mode][table];
+  let html = '<tr>' + cols.map(([, label]) => `<th>${esc(t(label))}</th>`).join('') + '<th></th></tr>';
+  rows.forEach((row, r) => {
+    html += '<tr>' + cols.map(([key], c) => key === 'can_rotate'
+      ? `<td class="c"><input type="checkbox" ${row[c] ? 'checked' : ''} onchange="setCell('${table}',${r},${c},this.checked)"></td>`
+      : `<td><input type="text" value="${esc(row[c] ?? '')}" data-table="${table}" data-r="${r}" data-c="${c}"
+           oninput="setCell('${table}',${r},${c},this.value)" onkeydown="cellKey(event)" onpaste="cellPaste(event)"></td>`).join('')
+      + `<td class="x"><button class="mini" tabindex="-1" onclick="delRow('${table}',${r})">×</button></td></tr>`;
+  });
+  document.getElementById(table).innerHTML = html;
+}
+function setCell(table, r, c, v) { data[mode][table][r][c] = v; save(); }
+function addRow(table, focus = true) {
+  data[mode][table].push(emptyRow(mode, table)); save(); drawTable(table);
+  if (focus) document.querySelector(`input[data-table=${table}][data-r="${data[mode][table].length - 1}"][data-c="0"]`)?.focus();
+}
+function delRow(table, r) {
+  data[mode][table].splice(r, 1);
+  if (!data[mode][table].length) data[mode][table].push(emptyRow(mode, table));
+  save(); drawTable(table);
+}
+// Tab (or Enter) on the last text cell of the last row starts a new row.
+function cellKey(e) {
+  const el = e.target, table = el.dataset.table, rows = data[mode][table];
+  const textCols = MODES[mode][table].filter(([key]) => key !== 'can_rotate').length;
+  const last = +el.dataset.r === rows.length - 1 && +el.dataset.c === textCols - 1;
+  if ((e.key === 'Tab' && !e.shiftKey && last) || e.key === 'Enter') {
+    if (last) { e.preventDefault(); addRow(table); }
+    else if (e.key === 'Enter') { e.preventDefault(); document.querySelector(`input[data-table=${table}][data-r="${+el.dataset.r + 1}"][data-c="${el.dataset.c}"]`)?.focus(); }
+  }
+}
+// Cells copied from a spreadsheet arrive as lines of tab-separated text.
+function cellPaste(e) {
+  const text = e.clipboardData.getData('text');
+  if (!/[\t\n]/.test(text.trim())) return;
+  e.preventDefault();
+  const el = e.target, table = el.dataset.table, rows = data[mode][table];
+  const width = MODES[mode][table].length;
+  text.replace(/\r/g, '').split('\n').filter(l => l.trim() !== '').forEach((line, i) => {
+    const r = +el.dataset.r + i;
+    while (rows.length <= r) rows.push(emptyRow(mode, table));
+    line.split('\t').forEach((v, k) => {
+      const c = +el.dataset.c + k;
+      if (c >= width) return;
+      rows[r][c] = MODES[mode][table][c][0] === 'can_rotate' ? /^(s|y|sim|yes|1|x|true)$/i.test(v.trim()) : v.trim();
+    });
+  });
+  save(); drawTable(table);
+}
+function drawSettings() {
+  const s = data[mode].settings;
+  document.getElementById('settings').innerHTML = MODES[mode].settings.map(([key, label]) => {
+    let input;
+    if (key === 'stages') input = `<select onchange="setSetting('stages', +this.value)">${[2, 3].map(n => `<option ${+s.stages === n ? 'selected' : ''}>${n}</option>`).join('')}</select>`;
+    else if (key === 'first_cut') input = `<select onchange="setSetting('first_cut', this.value)">${[['', 'auto'], ['length', 'along_length'], ['width', 'along_width']]
+      .map(([v, l]) => `<option value="${v}" ${s.first_cut === v ? 'selected' : ''}>${esc(t(l))}</option>`).join('')}</select>`;
+    else input = `<input type="text" value="${esc(s[key] ?? '')}" oninput="setSetting('${key}', this.value)">`;
+    return `<label>${esc(t(label))}</label>${input}`;
+  }).join('');
+}
+function setSetting(key, v) { data[mode].settings[key] = v; save(); }
+function loadExample() {
+  const ex = MODES[mode].example;
+  data[mode] = { parts: ex.parts.map(r => [...r]), stock: ex.stock.map(r => [...r]), settings: { ...ex.settings } };
+  save(); lastStatus = null; drawAll();
+}
+function clearAll() { data[mode] = blank(mode); save(); lastStatus = null; drawAll(); }
+
+// The job exactly as the planner reads it.
+function buildJob() {
+  const rows = table => data[mode][table]
+    .map(row => Object.fromEntries(MODES[mode][table].map(([key], c) =>
+      [key, key === 'id' ? String(row[c] ?? '').trim() : key === 'can_rotate' ? !!row[c] : key === 'quantity' ? Math.round(num(row[c])) : num(row[c])])))
+    .filter(o => o.length > 0);
+  const parts = rows('parts').map((p, i) => ({ ...p, id: p.id || `P${i + 1}`, quantity: p.quantity || 1 }));
+  const stock = rows('stock').map((s, i) => ({ ...s, id: s.id || `S${i + 1}` }));
+  const unique = list => { const seen = {}; for (const o of list) { seen[o.id] = (seen[o.id] || 0) + 1; if (seen[o.id] > 1) o.id += ` (${seen[o.id]})`; } };
+  unique(parts); unique(stock);
+  const settings = {};
+  for (const [key] of MODES[mode].settings) settings[key] = key === 'first_cut' ? data[mode].settings[key] || '' : Math.round(key === 'stages' || key === 'time_limit_sec' ? num(data[mode].settings[key]) : num(data[mode].settings[key]) * 1000) / (key === 'stages' || key === 'time_limit_sec' ? 1 : 1000);
+  return { parts, stock, settings };
+}
+
+// ---------- running ----------
+let lastStatus = null, lastJob = null, timer = null;
+async function run() {
+  const job = buildJob();
+  if (!job.parts.length || !job.stock.length) { alert(t('need_parts')); return; }
+  lastJob = job;
+  await fetch('/api/run', { method: 'POST', body: JSON.stringify({ mode, job }) });
+  clearInterval(timer);
+  timer = setInterval(poll, 300);
+  poll();
+}
+async function stop() { await fetch('/api/stop', { method: 'POST' }); }
+async function poll() {
+  const st = await (await fetch('/api/status')).json();
+  if (st.mode && st.mode !== mode) return;
+  lastStatus = st;
+  if (st.state !== 'running') clearInterval(timer);
+  drawResult();
+}
+
+// ---------- result side ----------
+function colour(id) {
+  let h = 0;
+  for (const ch of String(id)) h = (h * 31 + ch.charCodeAt(0)) % 360;
+  return `hsl(${h} 62% 78%)`;
+}
+function drawResult() {
+  const st = lastStatus, sum = document.getElementById('summary'), plan = document.getElementById('plan');
+  const running = st?.state === 'running';
+  document.getElementById('go').disabled = running;
+  document.getElementById('stop').disabled = !running;
+  if (!st || st.state === 'idle') { sum.innerHTML = `<div class="empty">${esc(t('nothing_yet'))}</div>`; plan.hidden = true; return; }
+  if (st.state === 'error') { sum.innerHTML = `<p class="warn"><b>${esc(t('error'))}:</b> ${esc(st.error)}</p>`; plan.hidden = true; return; }
+  const res = st.result;
+  if (!res) { sum.innerHTML = `<span class="badge run">${esc(t('running'))}</span>`; plan.hidden = true; return; }
+  const items = st.mode === 'linear' ? res.bars : res.sheets;
+  let html = `<div class="sum"><div><b>${items.length}</b> <span>${esc(t(st.mode === 'linear' ? 'bars' : 'sheets'))}</span></div>
+    <div><b>${fmt(res.utilization * 100)}%</b> <span>${esc(t('utilization'))}</span></div>
+    <div><span>${res.elapsed_ms} ${t('ms')}</span></div>`;
+  if (running) html += `<span class="badge run">${esc(t('running'))}</span>`;
+  else html += st.verified ? `<span class="badge ok">✓ ${esc(t('verified'))}</span>` : `<span class="badge bad">${esc(t('not_verified'))}</span>`;
+  html += '</div>';
+  if (res.unplaced?.length) html += `<p class="warn"><b>${esc(t('left_out'))}:</b> ${res.unplaced.map(u => `${esc(u.part_id)} × ${u.quantity}`).join(', ')}</p>`;
+  for (const w of res.warnings || []) html += `<p class="warn">${esc(w)}</p>`;
+  if (!running && !st.verified) html += st.problems.map(p => `<p class="warn">${esc(p)}</p>`).join('');
+  sum.innerHTML = html;
+  plan.hidden = !items.length;
+  plan.innerHTML = (st.mode === 'linear' ? drawBars(res) : drawSheets(res));
+}
+
+// Equal bars (or sheets) in a row are shown once, with a count.
+function grouped(items, keyOf) {
+  const out = [];
+  items.forEach((it, i) => {
+    const key = keyOf(it), prev = out[out.length - 1];
+    if (prev && prev.key === key) prev.count++; else out.push({ key, item: it, first: i + 1, count: 1 });
+  });
+  return out;
+}
+const range = g => g.count > 1 ? `${g.first}–${g.first + g.count - 1} <small>(${g.count} ${esc(t('times'))})</small>` : `${g.first}`;
+
+function drawBars(res) {
+  const s = lastJob?.settings || {};
+  const longest = Math.max(...res.bars.map(b => b.length));
+  return grouped(res.bars, b => b.stock_id + '|' + b.cuts.map(c => c.part_id).join('+')).map(g => {
+    const b = g.item, H = longest / 40, end = b.length - (s.end_loss || 0);
+    let svg = `<svg viewBox="0 0 ${longest} ${H}"><rect x="0" y="0" width="${b.length}" height="${H}" fill="#eef0f3" stroke="#8a94a3" stroke-width="${H / 30}"/>`;
+    if (s.start_loss) svg += `<rect x="0" y="0" width="${s.start_loss}" height="${H}" fill="#b8bfca"/>`;
+    if (s.end_loss) svg += `<rect x="${end}" y="0" width="${s.end_loss}" height="${H}" fill="#b8bfca"/>`;
+    for (const c of b.cuts) {
+      svg += `<rect x="${c.start}" y="0" width="${c.length}" height="${H}" fill="${colour(c.part_id)}" stroke="#39424e" stroke-width="${H / 30}"/>`;
+      if (c.length > longest / 22) svg += `<text x="${c.start + c.length / 2}" y="${H * 0.64}" font-size="${H * 0.42}" text-anchor="middle" fill="#1c2430">${fmt(c.length)}</text>`;
+    }
+    if (b.remainder > 0) svg += `<rect x="${end - b.remainder}" y="0" width="${b.remainder}" height="${H}" fill="${b.reusable ? '#c9efd2' : '#f6d5d5'}"/>`;
+    svg += '</svg>';
+    const rem = b.remainder > 0 ? `${t('remainder')} ${fmt(b.remainder)} (${t(b.reusable ? 'offcut' : 'scrap')})` : t('no_remainder');
+    return `<div class="item"><h3>${esc(t('bar'))} ${range(g)} <small>· ${esc(b.stock_id)} · ${fmt(b.length)} mm · ${fmt(b.utilization * 100)}%</small></h3>${svg}
+      <p class="line">${b.cuts.map(c => `${esc(c.part_id)} ${fmt(c.length)}`).join(' + ')} &nbsp;|&nbsp; ${esc(rem)}</p></div>`;
+  }).join('');
+}
+
+function drawSheets(res) {
+  const parts = Object.fromEntries((lastJob?.parts || []).map(p => [p.id, p]));
+  const trim = lastJob?.settings?.edge_trim || 0;
+  const key = sh => sh.stock_id + '|' + sh.first_cut + '|' + sh.placements.map(p => [p.part_id, p.x, p.y, p.rotated ? 1 : 0].join(',')).join(';');
+  return grouped(res.sheets, key).map(g => {
+    const sh = g.item, L = sh.length, W = sh.width, sw = L / 700;
+    let svg = `<svg viewBox="${-sw} ${-sw} ${L + 2 * sw} ${W + 2 * sw}">
+      <defs><pattern id="hatch" width="${L / 60}" height="${L / 60}" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="${L / 60}" stroke="#9aa5b3" stroke-width="${sw}"/></pattern></defs>
+      <rect x="0" y="0" width="${L}" height="${W}" fill="#dfe3e9" stroke="#8a94a3" stroke-width="${sw}"/>
+      <rect x="${trim}" y="${trim}" width="${L - 2 * trim}" height="${W - 2 * trim}" fill="url(#hatch)"/>`;
+    for (const o of sh.offcuts) if (o.reusable)
+      svg += `<rect x="${o.x}" y="${o.y}" width="${o.length}" height="${o.width}" fill="#c9efd2" stroke="#1a7f37" stroke-width="${sw}" stroke-dasharray="${sw * 6} ${sw * 4}"/>
+        <text x="${o.x + o.length / 2}" y="${o.y + o.width / 2}" font-size="${Math.min(L / 45, o.width * 0.5, o.length * 0.12)}" text-anchor="middle" dominant-baseline="middle" fill="#1a7f37">${fmt(o.length)} × ${fmt(o.width)}</text>`;
+    for (const p of sh.placements) {
+      const part = parts[p.part_id] || { length: 0, width: 0 };
+      const dx = p.rotated ? part.width : part.length, dy = p.rotated ? part.length : part.width;
+      const size = Math.min(L / 55, dy * 0.3, dx * 0.16);
+      svg += `<rect x="${p.x}" y="${p.y}" width="${dx}" height="${dy}" fill="${colour(p.part_id)}" stroke="#39424e" stroke-width="${sw}"/>
+        <text x="${p.x + dx / 2}" y="${p.y + dy / 2 - size * 0.1}" font-size="${size}" text-anchor="middle" fill="#1c2430">${esc(p.part_id)}${p.rotated ? ' ↻' : ''}</text>
+        <text x="${p.x + dx / 2}" y="${p.y + dy / 2 + size}" font-size="${size * 0.8}" text-anchor="middle" fill="#39424e">${fmt(dx)} × ${fmt(dy)}</text>`;
+    }
+    svg += '</svg>';
+    const along = a => t(a === 'length' ? 'along_length' : 'along_width').toLowerCase();
+    const cuts = sh.cuts.map(c => `<li>${esc(t('stage'))} ${c.stage} · ${esc(along(c.along))} · ${esc(t('at'))} <b>${fmt(c.pos)}</b> (${esc(t('from'))} ${fmt(c.from)} ${esc(t('to'))} ${fmt(c.to)})</li>`).join('');
+    const keep = sh.offcuts.filter(o => o.reusable).map(o => `${fmt(o.length)} × ${fmt(o.width)}`).join(', ') || t('none');
+    return `<div class="item"><h3>${esc(t('sheet'))} ${range(g)} <small>· ${esc(sh.stock_id)} · ${fmt(L)} × ${fmt(W)} mm · ${fmt(sh.utilization * 100)}% · ${esc(t('first'))}: ${esc(along(sh.first_cut))}</small></h3>${svg}
+      <p class="line">${esc(t('offcuts'))}: ${esc(keep)}</p>
+      <details><summary>${esc(t('cuts'))} (${sh.cuts.length})</summary><ol>${cuts}</ol></details></div>`;
+  }).join('');
+}
+
+drawAll();
+</script>
+</body>
+</html>
