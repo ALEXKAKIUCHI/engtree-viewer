@@ -139,11 +139,24 @@ func TestOffcutIsNotSpentForNothing(t *testing.T) {
 	}
 }
 
-// Two bars either way; the plan that leaves one long offcut wins over the
-// one that leaves two short ones.
-func TestPrefersOneLongRemainder(t *testing.T) {
+// Two bars either way. Two bars cut alike (3000 + 2000 on each) win over
+// two different bars that would leave one longer offcut.
+func TestPrefersRepeatedBars(t *testing.T) {
 	job := Job{
 		Parts: []Part{{ID: "A", Length: 3000, Quantity: 2}, {ID: "B", Length: 2000, Quantity: 2}},
+		Stock: []Stock{{ID: "bar", Length: 6000}},
+	}
+	res := mustRun(t, job)
+	if len(res.Bars) != 2 || len(res.Bars[0].Cuts) != 2 || len(res.Bars[1].Cuts) != 2 {
+		t.Errorf("want 2 bars cut alike, got %+v", res.Bars)
+	}
+}
+
+// Same bars and as many layouts either way: the plan that leaves one long
+// offcut wins. 3000 + 2500 on one bar leaves 4000 whole on the other.
+func TestPrefersOneLongRemainder(t *testing.T) {
+	job := Job{
+		Parts: []Part{{ID: "A", Length: 3000, Quantity: 1}, {ID: "B", Length: 2000, Quantity: 1}, {ID: "C", Length: 2500, Quantity: 1}},
 		Stock: []Stock{{ID: "bar", Length: 6000}},
 	}
 	res := mustRun(t, job)
@@ -151,8 +164,35 @@ func TestPrefersOneLongRemainder(t *testing.T) {
 	for _, b := range res.Bars {
 		longest = math.Max(longest, b.Remainder)
 	}
-	if len(res.Bars) != 2 || longest != 2000 {
-		t.Errorf("want 2 bars with one remainder of 2000, got %+v", res.Bars)
+	if len(res.Bars) != 2 || longest != 4000 {
+		t.Errorf("want 2 bars with one remainder of 4000, got %+v", res.Bars)
+	}
+}
+
+// A mixed job sent many times over: the bars repeat instead of each one
+// being different, and bars cut alike come one after the other.
+func TestRepeatsBarLayouts(t *testing.T) {
+	job := Job{
+		Parts:    []Part{{ID: "A", Length: 1850, Quantity: 40}, {ID: "B", Length: 1200, Quantity: 40}, {ID: "C", Length: 640, Quantity: 40}},
+		Stock:    []Stock{{ID: "bar", Length: 6000}},
+		Settings: Settings{Kerf: 3, StartLoss: 20, EndLoss: 100},
+	}
+	res := mustRun(t, job)
+	keys := map[string]bool{}
+	prev := ""
+	for i, b := range res.Bars {
+		k := ""
+		for _, c := range b.Cuts {
+			k += c.PartID
+		}
+		if keys[k] && k != prev {
+			t.Errorf("bar %d repeats an earlier layout but is not next to it", i+1)
+		}
+		keys[k], prev = true, k
+	}
+	t.Logf("%d bars, %d different layouts", len(res.Bars), len(keys))
+	if len(keys) > 6 {
+		t.Errorf("%d different layouts in %d bars", len(keys), len(res.Bars))
 	}
 }
 

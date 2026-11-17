@@ -2,9 +2,11 @@ package rect
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"math/rand"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -19,9 +21,11 @@ import (
 //  2. fewer sheets of the last stock in the list, then of the one before
 //     it, and so on: the list goes from offcuts to full sheets, so full
 //     sheets are spared first;
-//  3. the largest single reusable offcut: one big piece is worth more
+//  3. fewer different sheet layouts: the same layout cut on several
+//     sheets means fewer set-ups at the saw;
+//  4. the largest single reusable offcut: one big piece is worth more
 //     than several small ones;
-//  4. fewer cuts.
+//  5. fewer cuts.
 //
 // How a plan is built: sheets are taken in stock order. A sheet is filled
 // strip by strip; a strip is as high as one of the parts still to cut and
@@ -29,7 +33,8 @@ import (
 // column holds one part or, with three stages, a stack of parts of the
 // same width. The first plan always takes the densest choice; the search
 // then repeats the construction with some chance in the choices and keeps
-// the best plan.
+// the best plan. Half of the constructions repeat each sheet layout for as
+// long as the parts left allow, before working out a new one.
 func Run(ctx context.Context, job Job, progress func(Result)) (Result, error) {
 	if err := job.Validate(); err != nil {
 		return Result{}, err
@@ -54,7 +59,8 @@ func Run(ctx context.Context, job Job, progress func(Result)) (Result, error) {
 	}
 	rng := rand.New(rand.NewSource(1))
 	skip := make([]bool, len(job.Stock))
-	offer(p.build(rng, 0, skip))
+	offer(p.build(rng, 0, skip, true))
+	offer(p.build(rng, 0, skip, false))
 	for i := 1; i < maxRounds; i++ {
 		if ctx.Err() != nil || time.Since(began) > limit {
 			break
@@ -65,7 +71,7 @@ func Run(ctx context.Context, job Job, progress func(Result)) (Result, error) {
 		for si := range skip {
 			skip[si] = i%4 == 3 && si < len(skip)-1 && rng.Intn(2) == 0
 		}
-		offer(p.build(rng, 0.1+0.5*rng.Float64(), skip))
+		offer(p.build(rng, 0.1+0.5*rng.Float64(), skip, i%2 == 0))
 	}
 	return p.result(best, began), nil
 }
@@ -108,6 +114,7 @@ type layout struct {
 	unplaced int
 	// worked out once, for comparing layouts
 	perStock   []int
+	plans      int // different sheet layouts
 	bestOffcut float64
 	cuts       int
 }
@@ -175,7 +182,9 @@ func newPlanner(job Job) *planner {
 
 // build makes one plan. noise is how much chance enters the choices: 0
 // always takes the densest. Stock marked in skip is left on the shelf.
-func (p *planner) build(rng *rand.Rand, noise float64, skip []bool) *layout {
+// With repeat, each sheet layout is cut again for as long as the stock
+// and the parts left allow.
+func (p *planner) build(rng *rand.Rand, noise float64, skip []bool, repeat bool) *layout {
 	set := p.job.Settings
 	left := make([]int, len(p.job.Parts))
 	for pi, part := range p.job.Parts {
@@ -211,23 +220,63 @@ func (p *planner) build(rng *rand.Rand, noise float64, skip []bool) *layout {
 			if pick == nil {
 				break // nothing left fits this stock
 			}
+			used := make([]int, len(left))
 			for pi := range left {
-				remaining -= left[pi] - pickLeft[pi]
+				used[pi] = left[pi] - pickLeft[pi]
+				remaining -= used[pi]
 			}
 			left = pickLeft
 			l.sheets = append(l.sheets, *pick)
+			for repeat && remaining > 0 && (st.Quantity == 0 || n+1 < st.Quantity) && covers(left, used) {
+				n++
+				for pi := range left {
+					left[pi] -= used[pi]
+					remaining -= used[pi]
+				}
+				l.sheets = append(l.sheets, *pick)
+			}
 		}
 	}
 	l.left = left
 	l.unplaced = remaining
 	l.perStock = make([]int, len(p.job.Stock))
+	keys := map[string]bool{}
 	for i := range l.sheets {
 		sp := &l.sheets[i]
+		keys[sheetKey(sp)] = true
 		l.perStock[sp.stock]++
 		l.bestOffcut = math.Max(l.bestOffcut, p.largestOffcut(sp))
 		l.cuts += len(p.cuts(sp))
 	}
+	l.plans = len(keys)
 	return l
+}
+
+// covers says whether left still holds every unit in used.
+func covers(left, used []int) bool {
+	for i := range used {
+		if left[i] < used[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// sheetKey is the same for two sheets cut exactly alike.
+func sheetKey(sp *sheetPlan) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "%d|%s", sp.stock, sp.frame.first)
+	for _, s := range sp.strips {
+		fmt.Fprintf(&b, "|%g:", s.dv)
+		for _, c := range s.cols {
+			fmt.Fprintf(&b, "(%g", c.du)
+			for _, it := range c.items {
+				fmt.Fprintf(&b, ",%d%v", it.part, it.rot)
+			}
+			b.WriteByte(')')
+		}
+	}
+	return b.String()
 }
 
 // fill lays strips on an empty sheet until no part fits, taking the units
@@ -450,6 +499,9 @@ func (p *planner) better(a, b *layout) bool {
 			return a.perStock[si] < b.perStock[si]
 		}
 	}
+	if a.plans != b.plans {
+		return a.plans < b.plans
+	}
 	if math.Abs(a.bestOffcut-b.bestOffcut) > Eps {
 		return a.bestOffcut > b.bestOffcut
 	}
@@ -463,7 +515,23 @@ func (p *planner) result(l *layout, began time.Time) Result {
 	res := Result{Sheets: []SheetLayout{}}
 	next := make([]int, len(p.job.Parts)) // units already numbered, per part
 	var partsArea, usableArea float64
+	// Sheets cut alike come one after the other, in stock order.
+	first := map[string]int{}
+	order := make([]int, len(l.sheets))
 	for i := range l.sheets {
+		order[i] = i
+		if _, ok := first[sheetKey(&l.sheets[i])]; !ok {
+			first[sheetKey(&l.sheets[i])] = i
+		}
+	}
+	sort.SliceStable(order, func(a, b int) bool {
+		sa, sb := &l.sheets[order[a]], &l.sheets[order[b]]
+		if sa.stock != sb.stock {
+			return sa.stock < sb.stock
+		}
+		return first[sheetKey(sa)] < first[sheetKey(sb)]
+	})
+	for _, i := range order {
 		sp := &l.sheets[i]
 		st := p.job.Stock[sp.stock]
 		lengthwise := sp.frame.first == AlongLength

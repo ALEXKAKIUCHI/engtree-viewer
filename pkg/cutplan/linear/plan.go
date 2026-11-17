@@ -2,6 +2,7 @@ package linear
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"math/rand"
 	"sort"
@@ -20,7 +21,9 @@ import (
 //     it, and so on: the list goes from offcuts to full bars, so full bars
 //     are spared first and an offcut is not spent when the part fits a bar
 //     that is already being cut;
-//  3. the longest single reusable remainder: one long offcut is worth more
+//  3. fewer different bar layouts: the same layout cut on several bars
+//     means fewer set-ups at the saw;
+//  4. the longest single reusable remainder: one long offcut is worth more
 //     than several short ones.
 func Run(ctx context.Context, job Job, progress func(Result)) (Result, error) {
 	if err := job.Validate(); err != nil {
@@ -40,7 +43,8 @@ func Run(ctx context.Context, job Job, progress func(Result)) (Result, error) {
 		}
 	}
 
-	offer(p.fillBarByBar())
+	offer(p.fillBarByBar(true))
+	offer(p.fillBarByBar(false))
 	offer(p.firstFit(p.order, false))
 	offer(p.firstFit(p.order, true))
 
@@ -163,8 +167,9 @@ func (p *planner) firstFit(order []int, tight bool) *layout {
 
 // fillBarByBar walks the stock in list order and, for each bar, picks the
 // group of remaining units that fills it best. It moves to the next stock
-// when the bars run out or nothing left fits.
-func (p *planner) fillBarByBar() *layout {
+// when the bars run out or nothing left fits. With repeat, each bar
+// layout is cut again for as long as the bars and the parts left allow.
+func (p *planner) fillBarByBar(repeat bool) *layout {
 	l := &layout{unplaced: append([]int(nil), p.lost...)}
 	rest := append([]int(nil), p.order...)
 	for si, st := range p.job.Stock {
@@ -188,10 +193,62 @@ func (p *planner) fillBarByBar() *layout {
 				}
 			}
 			rest = keep
+			for repeat && len(rest) > 0 && (st.Quantity == 0 || n+1 < st.Quantity) {
+				again, left, ok := p.takeSame(load, rest)
+				if !ok {
+					break
+				}
+				n++
+				l.bars = append(l.bars, again)
+				rest = left
+			}
 		}
 	}
 	l.unplaced = append(l.unplaced, rest...)
 	return l
+}
+
+// takeSame takes from rest the same parts as on load, for another bar
+// of the same stock. ok is false when rest lacks some of them.
+func (p *planner) takeSame(load barLoad, rest []int) (barLoad, []int, bool) {
+	need := map[int]int{} // part -> units
+	for _, u := range load.units {
+		need[p.part[u]]++
+	}
+	again := barLoad{stock: load.stock, used: load.used}
+	var left []int
+	for _, u := range rest {
+		if need[p.part[u]] > 0 {
+			need[p.part[u]]--
+			again.units = append(again.units, u)
+		} else {
+			left = append(left, u)
+		}
+	}
+	for _, n := range need {
+		if n > 0 {
+			return barLoad{}, nil, false
+		}
+	}
+	return again, left, true
+}
+
+// barKey is the same for two bars cut alike.
+func (p *planner) barKey(b barLoad) string {
+	parts := make([]int, len(b.units))
+	for i, u := range b.units {
+		parts[i] = p.part[u]
+	}
+	sort.Ints(parts)
+	return fmt.Sprint(b.stock, parts)
+}
+
+func (p *planner) plans(l *layout) int {
+	keys := map[string]bool{}
+	for _, b := range l.bars {
+		keys[p.barKey(b)] = true
+	}
+	return len(keys)
 }
 
 // bestFill returns the positions in units (longest first) of the group
@@ -278,6 +335,9 @@ func (p *planner) better(a, b *layout) bool {
 			return ca[si] < cb[si]
 		}
 	}
+	if pa, pb := p.plans(a), p.plans(b); pa != pb {
+		return pa < pb
+	}
 	return ra > rb+Eps
 }
 
@@ -286,12 +346,15 @@ func (p *planner) result(l *layout, began time.Time) Result {
 	set := p.job.Settings
 	bars := append([]barLoad(nil), l.bars...)
 	// Stock order, fullest bar first: the bar with the long offcut comes
-	// last within its stock.
+	// last within its stock. Bars cut alike come one after the other.
 	sort.SliceStable(bars, func(i, j int) bool {
 		if bars[i].stock != bars[j].stock {
 			return bars[i].stock < bars[j].stock
 		}
-		return bars[i].used > bars[j].used+Eps
+		if d := bars[i].used - bars[j].used; math.Abs(d) > Eps {
+			return d > 0
+		}
+		return p.barKey(bars[i]) < p.barKey(bars[j])
 	})
 	res := Result{Bars: []Bar{}}
 	next := make([]int, len(p.job.Parts)) // units already numbered, per part

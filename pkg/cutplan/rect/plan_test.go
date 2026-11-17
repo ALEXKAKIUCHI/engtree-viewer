@@ -244,6 +244,44 @@ func TestBadJobIsAnError(t *testing.T) {
 	}
 }
 
+// The test page example sent four times over: sheets cut alike repeat and
+// come one after the other.
+func TestRepeatsSheetLayouts(t *testing.T) {
+	job := Job{
+		Parts: []Part{
+			{ID: "Lateral", Length: 2100, Width: 550, Quantity: 16},
+			{ID: "Base", Length: 1164, Width: 550, Quantity: 16, CanRotate: true},
+			{ID: "Prateleira", Length: 1164, Width: 520, Quantity: 40, CanRotate: true},
+			{ID: "Porta", Length: 2090, Width: 395, Quantity: 24},
+			{ID: "Fundo", Length: 2100, Width: 1190, Quantity: 8, CanRotate: true},
+			{ID: "Rodape", Length: 1164, Width: 100, Quantity: 16, CanRotate: true},
+		},
+		Stock:    []Sheet{{ID: "s", Length: 2750, Width: 1830}},
+		Settings: Settings{Kerf: 4, EdgeTrim: 10},
+	}
+	res := mustRun(t, job)
+	key := func(sh SheetLayout) string {
+		k := sh.FirstCut
+		for _, p := range sh.Placements {
+			k += fmt.Sprintf("|%s,%g,%g,%v", p.PartID, p.X, p.Y, p.Rotated)
+		}
+		return k
+	}
+	keys := map[string]bool{}
+	prev := ""
+	for i, sh := range res.Sheets {
+		k := key(sh)
+		if keys[k] && k != prev {
+			t.Errorf("sheet %d repeats an earlier layout but is not next to it", i+1)
+		}
+		keys[k], prev = true, k
+	}
+	t.Logf("%d sheets, %d different layouts, utilization %.1f%%", len(res.Sheets), len(keys), res.Utilization*100)
+	if len(keys)*2 > len(res.Sheets) {
+		t.Errorf("%d different layouts in %d sheets", len(keys), len(res.Sheets))
+	}
+}
+
 // A furniture-sized job: how full the sheets get, and how long it takes.
 func TestLargeJob(t *testing.T) {
 	rng := rand.New(rand.NewSource(9))
