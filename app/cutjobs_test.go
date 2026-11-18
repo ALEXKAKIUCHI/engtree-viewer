@@ -2,7 +2,6 @@ package app
 
 import (
 	"encoding/json"
-	"strings"
 	"testing"
 	"time"
 
@@ -28,7 +27,7 @@ func TestBuildJobs(t *testing.T) {
 	mats := testMaterials()
 	mats.Materials[0].Offcuts = []Offcut{{Length: 1000, Width: 800, Quantity: 1}}
 	jobs, problems := buildJobs(planLines(), mats, defaultCutMachine())
-	if len(problems) != 1 || !strings.Contains(problems[0], "999999") {
+	if len(problems) != 1 || problems[0] != (LineProblem{"X1", "999999", "unknown_material"}) {
 		t.Errorf("problems: %v", problems)
 	}
 	if len(jobs) != 3 {

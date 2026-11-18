@@ -86,26 +86,36 @@ type MaterialJob struct {
 	Parts    []JobPart       `json:"parts"`
 }
 
+// LineProblem says why a line was left out of the plan. Reason is a code
+// the screen translates: unknown_material, no_qty, no_size.
+type LineProblem struct {
+	Code     string `json:"code"`
+	Material string `json:"material"`
+	Reason   string `json:"reason"`
+}
+
+func (p LineProblem) String() string { return p.Code + ": " + p.Reason + " " + p.Material }
+
 // buildJobs turns the plan lines into one job per material, in the order
 // the materials first appear. Lines of a material that is not in the list,
 // or with a size that cannot be cut, are refused with the reason.
-func buildJobs(lines []PlanLine, mats MaterialList, mc CutMachine) ([]MaterialJob, []string) {
-	var problems []string
+func buildJobs(lines []PlanLine, mats MaterialList, mc CutMachine) ([]MaterialJob, []LineProblem) {
+	var problems []LineProblem
 	var order []string
 	groups := map[string][]PlanLine{}
 	found := map[string]Material{}
 	for _, l := range lines {
 		m, ok := mats.Find(l.Material)
 		if !ok {
-			problems = append(problems, fmt.Sprintf("%s: material %s is not in the material list", l.Code, l.Material))
+			problems = append(problems, LineProblem{l.Code, l.Material, "unknown_material"})
 			continue
 		}
 		if l.Qty < 1 {
-			problems = append(problems, fmt.Sprintf("%s: no quantity", l.Code))
+			problems = append(problems, LineProblem{l.Code, l.Material, "no_qty"})
 			continue
 		}
 		if l.CutLength() <= 0 || (m.Kind == KindSheet && l.CutWidth() <= 0) {
-			problems = append(problems, fmt.Sprintf("%s: no size to cut", l.Code))
+			problems = append(problems, LineProblem{l.Code, l.Material, "no_size"})
 			continue
 		}
 		k := materialKey(m.Code)

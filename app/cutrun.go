@@ -38,7 +38,7 @@ type PlanStatus struct {
 	Request   PlanRequest    `json:"request"`
 	Created   time.Time      `json:"created"`
 	Materials []MaterialPlan `json:"materials"`
-	Problems  []string       `json:"problems"` // lines left out, with the reason
+	Problems  []LineProblem  `json:"problems"` // lines left out, with the reason
 }
 
 // planRunner runs one plan at a time. A new plan stops the old one.
@@ -49,7 +49,7 @@ type planRunner struct {
 	status PlanStatus
 }
 
-var plans = &planRunner{status: PlanStatus{State: "idle", Materials: []MaterialPlan{}, Problems: []string{}}}
+var plans = &planRunner{status: PlanStatus{State: "idle", Materials: []MaterialPlan{}, Problems: []LineProblem{}}}
 
 func (p *planRunner) get() PlanStatus {
 	p.mu.Lock()
@@ -86,7 +86,7 @@ func (p *planRunner) start(req PlanRequest, mats MaterialList) PlanStatus {
 	}
 	jobs, problems := buildJobs(lines, mats, req.Machine)
 	if problems == nil {
-		problems = []string{}
+		problems = []LineProblem{}
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
