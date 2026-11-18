@@ -10,14 +10,14 @@ import (
 
 // A BOM whose material code is in a "Cód. MP" column. Three levels: product > drawer (x2) > parts.
 const exampleBOM = `Nº do item;Nº da peça;Descrição;QTD.;Cód. MP;Comprimento;Largura
-1;49815P107;FRENTE 2;1;100234;800;730
-2;49815-GAV;GAVETA;2;;;
-2.1;49815P121;LATERAL GAVETA;2;100234;427;183
-2.2;49815P139;FUNDO GAVETA;1;MDF6BR;500;400
-3;49815P200;TUBO 20X20;4;TB2020;1200;
-4;49815P300;PARAFUSO;8;;;
-5;49815P400;TAMPO;1;999999;900;600
-6;49815P500;PORTA GRANDE;1;100234;3000;700
+1;1000-107;FRENTE 2;1;100234;800;730
+2;1000-GAV;GAVETA;2;;;
+2.1;1000-121;LATERAL GAVETA;2;100234;427;183
+2.2;1000-139;FUNDO GAVETA;1;MDF6BR;500;400
+3;1000-200;TUBO 20X20;4;TB2020;1200;
+4;1000-300;PARAFUSO;8;;;
+5;1000-400;TAMPO;1;999999;900;600
+6;1000-500;PORTA GRANDE;1;100234;3000;700
 `
 
 func testMaterials() MaterialList {
@@ -33,12 +33,12 @@ func testMaterials() MaterialList {
 
 func bomFromCSV(t *testing.T, csv string) BomResult {
 	t.Helper()
-	p := filepath.Join(t.TempDir(), "BOM - 49815 - BALCAO.csv")
+	p := filepath.Join(t.TempDir(), "BOM - 1000 - ARMARIO.csv")
 	if err := os.WriteFile(p, []byte(csv), 0644); err != nil {
 		t.Fatal(err)
 	}
 	cfg := defaultConfig()
-	return buildBom(Product{Code: "49815", BomFile: p}, cfg)
+	return buildBom(Product{Code: "1000", BomFile: p}, cfg)
 }
 
 func TestCutLinesFromMaterialColumn(t *testing.T) {
@@ -59,19 +59,19 @@ func TestCutLinesFromMaterialColumn(t *testing.T) {
 		got = append(got, row{l.Code, l.Material, l.Length, l.Width, l.Qty, l.Kind, strings.Join(l.Warnings, ",")})
 	}
 	want := []row{
-		{"49815P107", "100234", 800, 730, 3, KindSheet, ""},          // 1 × 3 products
-		{"49815P121", "100234", 427, 183, 12, KindSheet, ""},         // 2 per drawer × 2 drawers × 3
-		{"49815P139", "MDF6BR", 500, 400, 6, KindSheet, ""},          // 1 × 2 × 3
-		{"49815P200", "TB2020", 1200, 0, 12, KindBar, ""},            // bar: no width needed
-		{"49815P400", "999999", 900, 600, 3, "", "unknown_material"}, // not in the list
-		{"49815P500", "100234", 3000, 700, 3, KindSheet, "too_big"},  // longer than the sheet
+		{"1000-107", "100234", 800, 730, 3, KindSheet, ""},          // 1 × 3 products
+		{"1000-121", "100234", 427, 183, 12, KindSheet, ""},         // 2 per drawer × 2 drawers × 3
+		{"1000-139", "MDF6BR", 500, 400, 6, KindSheet, ""},          // 1 × 2 × 3
+		{"1000-200", "TB2020", 1200, 0, 12, KindBar, ""},            // bar: no width needed
+		{"1000-400", "999999", 900, 600, 3, "", "unknown_material"}, // not in the list
+		{"1000-500", "100234", 3000, 700, 3, KindSheet, "too_big"},  // longer than the sheet
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("lines:\n got  %v\n want %v", got, want)
 	}
 	// The assembly (GAVETA) and the screw (no material) are not cut.
 	for _, l := range res.Lines {
-		if l.Code == "49815-GAV" || l.Code == "49815P300" {
+		if l.Code == "1000-GAV" || l.Code == "1000-300" {
 			t.Errorf("%s should not be a cut line", l.Code)
 		}
 	}

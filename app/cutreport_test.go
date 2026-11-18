@@ -14,38 +14,38 @@ import (
 	"github.com/go-pdf/fpdf"
 )
 
-// The parts of the Corte Certo sheet the shop sent (MDF 15 mm, 1840 x
-// 2740), one product.
-func cortecertoLines() []PlanLine {
+// Eleven parts on one 15 mm sheet of 1840 x 2740, the sizes of a Corte
+// Certo reference sheet (its use is 70.45 %), and a tube.
+func referenceLines() []PlanLine {
 	l := func(code, desc string, w, h float64) PlanLine {
 		return PlanLine{Code: code, Desc: desc, Material: "100234", Length: h, Width: w, Qty: 1}
 	}
 	return []PlanLine{
-		l("49815P107", "FRENTE 2", 730, 800), l("49815P106", "FRENTE", 670, 690),
-		l("49815P121", "PORTA BASCULANTE", 183, 427), l("49815P139", "FECHAMENTO", 170, 230),
-		l("49815P150", "LATERAL", 80, 800), l("49815P104", "DIVISORIA", 595, 670),
-		l("49815P101", "LATERAL", 580, 670), l("49815P120", "LATERAL", 580, 670),
-		l("49815P137", "LATERAL", 580, 660), l("49815P108", "BASE", 580, 660),
-		l("49815P138", "LATERAL", 580, 660),
-		{Code: "49815P200", Desc: "TUBO 20X20", Material: "TB2020", Length: 1200, Qty: 7},
+		l("1000-107", "FRENTE 2", 730, 800), l("1000-106", "FRENTE", 670, 690),
+		l("1000-121", "PORTA BASCULANTE", 183, 427), l("1000-139", "FECHAMENTO", 170, 230),
+		l("1000-150", "LATERAL", 80, 800), l("1000-104", "DIVISORIA", 595, 670),
+		l("1000-101", "LATERAL", 580, 670), l("1000-120", "LATERAL", 580, 670),
+		l("1000-137", "LATERAL", 580, 660), l("1000-108", "BASE", 580, 660),
+		l("1000-138", "LATERAL", 580, 660),
+		{Code: "1000-200", Desc: "TUBO 20X20", Material: "TB2020", Length: 1200, Qty: 7},
 	}
 }
 
 func TestCutReportPDF(t *testing.T) {
 	registry.Register()
 	mats := testMaterials()
-	mats.Materials[0].Description = "MDF ITAPUA ESSENCIAL WOOD 2 FACES"
+	mats.Materials[0].Description = "MDF BRANCO 2 FACES"
 	mats.Materials[0].Length, mats.Materials[0].Width = 2740, 1840
 	mc := defaultCutMachine()
 	mc.TimeLimitSec, mc.Order, mc.User = 2, "PED-123", "João"
-	plans.start(PlanRequest{Product: "EES_195", ProductDesc: "NOVO BALCÃO PNE", ProductQty: 1, Lines: cortecertoLines(), Machine: mc}, mats)
+	plans.start(PlanRequest{Product: "PROD-01", ProductDesc: "ARMÁRIO DE EXEMPLO", ProductQty: 1, Lines: referenceLines(), Machine: mc}, mats)
 	st := plans.waitDone(30 * time.Second)
 	for _, m := range st.Materials {
 		if m.State != "done" || len(m.Problems) != 0 {
 			t.Fatalf("%s: %s %v", m.Material.Code, m.State, m.Problems)
 		}
 	}
-	b, err := cutReportPDF(st, "pt-BR", `S:\Seccionadora\Plano de corte - EES_195.pdf`)
+	b, err := cutReportPDF(st, "pt-BR", `S:\Seccionadora\Plano de corte - PROD-01.pdf`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +109,7 @@ func TestFooterPathFits(t *testing.T) {
 	st := PlanStatus{Request: PlanRequest{Product: "P"}}
 	pdf := fpdf.New("P", "mm", "A4", "")
 	r := &report{pdf: pdf, tr: pdf.UnicodeTranslatorFromDescriptor(""), txt: reportText["pt-BR"], st: st,
-		path: `\\servidor\producao\seccionadora\planos de corte\2026\novembro\Plano de corte - 49815 - NOVO BALCAO PNE COM PORTAS - 2026-11-18 2056.pdf`}
+		path: `\\servidor\producao\seccionadora\planos de corte\2026\novembro\Plano de corte - 1000 - ARMARIO DE EXEMPLO COM PORTAS - 2026-11-18 2056.pdf`}
 	pdf.AddPage()
 	pdf.SetFont("Helvetica", "", 7)
 	r.footer()

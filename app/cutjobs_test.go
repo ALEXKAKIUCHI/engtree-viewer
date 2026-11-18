@@ -78,7 +78,7 @@ func TestPlanRunPassesTheVerifier(t *testing.T) {
 	registry.Register()
 	mc := defaultCutMachine()
 	mc.TimeLimitSec = 1
-	st := plans.start(PlanRequest{Product: "49815", Lines: planLines(), Machine: mc}, testMaterials())
+	st := plans.start(PlanRequest{Product: "1000", Lines: planLines(), Machine: mc}, testMaterials())
 	if len(st.Materials) != 3 {
 		t.Fatalf("%d materials", len(st.Materials))
 	}
