@@ -12,7 +12,34 @@ import (
 //	GET  /api/materials           the material list
 //	POST /api/materials           replace it (refused with 400 and the reasons when invalid)
 //	GET  /api/cut_lines?code=&qty= the parts of a product to cut, with total quantities
+//	GET  /api/cut_machine          the machine values typed last time
+//	POST /api/cut_plan             start a plan (PlanRequest); a new one stops the old
+//	GET  /api/cut_plan             the plan as it is now
+//	POST /api/cut_plan/stop        stop it; what was found so far is kept
 func cutRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("/api/cut_machine", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, currentMachine())
+	})
+
+	mux.HandleFunc("/api/cut_plan", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeJSON(w, plans.get())
+			return
+		}
+		var req PlanRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid plan", http.StatusBadRequest)
+			return
+		}
+		rememberMachine(req.Machine)
+		writeJSON(w, plans.start(req, loadMaterials()))
+	})
+
+	mux.HandleFunc("/api/cut_plan/stop", func(w http.ResponseWriter, r *http.Request) {
+		plans.stop()
+		writeJSON(w, plans.get())
+	})
+
 	mux.HandleFunc("/api/materials", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			var l MaterialList

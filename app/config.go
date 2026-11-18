@@ -84,6 +84,9 @@ type Config struct {
 
 	ColumnLayout map[string]ListLayout `json:"column_layout,omitempty"`
 
+	// Machine values and report header last typed on the cut plan screen.
+	CutMachine *CutMachine `json:"cut_machine,omitempty"`
+
 	// ---- Shared settings (see SharedConfig) ----
 
 	// Folder with the BOM spreadsheets (.xlsx, .csv, .txt). Each spreadsheet
@@ -377,6 +380,9 @@ func saveConfig(in Config) Config {
 	}
 	if in.Requester == "" {
 		in.Requester = appCfg.Requester
+	}
+	if in.CutMachine == nil {
+		in.CutMachine = appCfg.CutMachine
 	}
 	writeShared := sharedAt.Active && !sharedAt.Offline && sharedAt.Editable && in.SharedConfig == sharedAt.Path
 	sharedPath := sharedAt.Path
