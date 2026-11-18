@@ -1,6 +1,7 @@
 package main
 
 import (
+	"archive/zip"
 	"bytes"
 	"encoding/json"
 	"net/http"
@@ -120,5 +121,30 @@ func TestStopEndsTheRunWithAPlan(t *testing.T) {
 	}
 	if time.Since(began) > 5*time.Second {
 		t.Errorf("stop took %v", time.Since(began))
+	}
+}
+
+func TestGibenExport(t *testing.T) {
+	cutplan.Register()
+	s := newServer()
+	h := s.routes()
+	job := `{"parts":[{"id":"Side","length":1705,"width":785,"quantity":3,"can_rotate":true},
+	  {"id":"Shelf","length":968,"width":745,"quantity":4,"can_rotate":true}],
+	  "stock":[{"id":"MDF","length":2750,"width":1850}],"settings":{"kerf":4.4,"edge_trim":10,"stages":3,"time_limit_sec":1}}`
+	if rec := post(t, h, "/api/run", `{"mode":"rectangular","job":`+job+`}`); rec.Code != 200 {
+		t.Fatalf("run: %d %s", rec.Code, rec.Body)
+	}
+	s.waitDone(10 * time.Second)
+	st := getStatus(t, h)
+	if !st.Verified {
+		t.Fatalf("status: %+v", st)
+	}
+	rec := post(t, h, "/api/giben", `{"job":`+job+`,"result":`+string(st.Result)+`,"material":"MDF BRANCO 15MM","thickness":15,"project":"P1"}`)
+	if rec.Code != 200 || rec.Header().Get("Content-Type") != "application/zip" {
+		t.Fatalf("giben: %d %s", rec.Code, rec.Body)
+	}
+	zr, err := zip.NewReader(bytes.NewReader(rec.Body.Bytes()), int64(rec.Body.Len()))
+	if err != nil || len(zr.File) != 2 || zr.File[0].Name != "MDF_BRANCO_15MM_15.0.AC" || zr.File[1].Name != "MDF_BRANCO_15MM_15.0.AD" {
+		t.Fatalf("zip: %v %v", err, zr)
 	}
 }
