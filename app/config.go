@@ -36,6 +36,21 @@ type Columns struct {
 	Qty         string `json:"qty"`
 }
 
+// CutColumns says where the cut plan finds its data in the BOM (or in the
+// details sheet). Same rules as Columns: alternatives separated by "|",
+// case, accents and punctuation ignored, "#3" for the 3rd column. The
+// quantity comes from Columns.Qty.
+//
+// Material holds the material code, which must be the code of a material
+// in the material list ("Kardex" in some companies). Thickness and kind
+// (sheet or bar) come from that list, not from the BOM.
+type CutColumns struct {
+	Material string `json:"material"`
+	Length   string `json:"length"`
+	Width    string `json:"width"`
+	Unit     string `json:"unit"` // of Length and Width: mm (default), cm, m or in
+}
+
 // ListLayout is how one list looks after the user dragged its columns: the
 // order of the column keys and their widths in pixels.
 type ListLayout struct {
@@ -91,6 +106,7 @@ type Config struct {
 	DetailsFile   string `json:"details_file"`
 
 	Columns       Columns    `json:"columns"`
+	CutColumns    CutColumns `json:"cut_columns"`
 	HiddenColumns []string   `json:"hidden_columns"` // spreadsheet columns not shown in the tree
 	FileTypes     []FileType `json:"file_types"`
 
@@ -120,6 +136,7 @@ func applyShared(dst *Config, src Config) {
 	dst.DetailsPrefix = src.DetailsPrefix
 	dst.DetailsFile = src.DetailsFile
 	dst.Columns = src.Columns
+	dst.CutColumns = src.CutColumns
 	dst.HiddenColumns = src.HiddenColumns
 	dst.FileTypes = src.FileTypes
 	dst.RefFolder = src.RefFolder
@@ -136,11 +153,21 @@ func defaultColumns() Columns {
 	}
 }
 
+func defaultCutColumns() CutColumns {
+	return CutColumns{
+		Material: "KARDEX|COD MATERIAL|CODIGO DO MATERIAL|CODIGO MATERIAL|MATERIAL CODE|MATERIAL",
+		Length:   "COMPRIMENTO|COMP|LENGTH",
+		Width:    "LARGURA|LARG|WIDTH",
+		Unit:     "mm",
+	}
+}
+
 func defaultConfig() Config {
 	return Config{
 		Mode:          ModeProduction,
 		NameSeparator: " - ",
 		Columns:       defaultColumns(),
+		CutColumns:    defaultCutColumns(),
 		FileTypes: []FileType{
 			{Name: "PDF", Extensions: []string{".pdf"}, Match: "prefix"},
 			{Name: "DXF", Extensions: []string{".dxf"}, Match: "exact"},
@@ -262,6 +289,19 @@ func normalizeConfig(c *Config) {
 	}
 	if strings.TrimSpace(c.Columns.Qty) == "" {
 		c.Columns.Qty = def.Qty
+	}
+	defCut := defaultCutColumns()
+	if strings.TrimSpace(c.CutColumns.Material) == "" {
+		c.CutColumns.Material = defCut.Material
+	}
+	if strings.TrimSpace(c.CutColumns.Length) == "" {
+		c.CutColumns.Length = defCut.Length
+	}
+	if strings.TrimSpace(c.CutColumns.Width) == "" {
+		c.CutColumns.Width = defCut.Width
+	}
+	if _, ok := unitToMM[c.CutColumns.Unit]; !ok {
+		c.CutColumns.Unit = defCut.Unit
 	}
 	if c.NameSeparator == "" {
 		c.NameSeparator = " - "

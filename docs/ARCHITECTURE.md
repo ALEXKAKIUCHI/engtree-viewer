@@ -45,6 +45,9 @@ modules can import them.
 | `app/files.go` | Directory cache, file-type index (exact / prefix keys), attachments, ZIP packages |
 | `app/parts.go` | Parts index built from all BOMs (per-BOM cache by modification time, read in parallel), Parts tab routes |
 | `app/revisions.go` | Revision requests: one JSON file each in a shared folder, status, export |
+| `app/materials.go` | The material list (sheets and bars, code and alternative code, thickness, grain, size, offcuts), kept in `materials.json` in the data folder |
+| `app/cutlines.go` | The parts of a product that go to the cut plan: BOM lines with a material code, quantities multiplied down the tree, matched to the material list |
+| `app/cutroutes.go` | Cut plan API: `/api/materials`, `/api/cut_lines` |
 | `app/cad.go` | The viewer's IGES reader, and the DXF view built on `pkg/dxfgeom` |
 | `app/taskbar_windows.go` | Own taskbar identity/icon for the browser window |
 | `app/ui/index.html` | The whole interface |

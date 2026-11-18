@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Cut plan, first part: settings for the BOM columns the plan reads
+  (material code, length, width, unit; "Kardex" is recognised by default),
+  a material list kept on this computer, and the parts of a product to cut,
+  with quantities multiplied down the tree and checked against the list
+  (unknown material, missing size, part larger than the sheet or bar)
 - The cut planners (`linear`, `rect`, `giben`) and the `cuttest` screen moved
   to their own Go module in `cutplan/`, which depends only on the standard
   library. `pkg/cutplan` is now just the adapter that registers them in

@@ -493,6 +493,8 @@ func Run() {
 		})
 	})
 
+	cutRoutes(mux)
+
 	mux.HandleFunc("/api/item_files", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, findAllFiles(getConfig(), r.URL.Query().Get("code"), getKnownCodes()))
 	})
