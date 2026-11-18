@@ -1,8 +1,8 @@
 # Giben panel saw files (.AC / .AD)
 
-`pkg/cutplan/giben` writes a rectangular plan as the two files a Giben saw
+`giben` writes a rectangular plan as the two files a Giben saw
 running GVision loads, in the layout Corte Certo exports for it. The layout
-below was worked out from Corte Certo files; `pkg/cutplan/giben/testdata`
+below was worked out from Corte Certo files; `giben/testdata`
 holds two of them (product codes changed) and the tests rebuild them byte
 for byte.
 

@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/ALEXKAKIUCHI/engtree-viewer/cutplan/linear"
+	"github.com/ALEXKAKIUCHI/engtree-viewer/cutplan/rect"
 	"github.com/ALEXKAKIUCHI/engtree-viewer/extension"
-	"github.com/ALEXKAKIUCHI/engtree-viewer/pkg/cutplan/linear"
-	"github.com/ALEXKAKIUCHI/engtree-viewer/pkg/cutplan/rect"
 )
 
 func TestBuiltInPlannersAreRegistered(t *testing.T) {

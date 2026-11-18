@@ -15,12 +15,12 @@ ui/index.html                                   Go server
 
 ```
 cmd/engtree/      the Windows executable (and the icon resource)
-cmd/cuttest/      a test screen for the cut planners (go run ./cmd/cuttest)
 app/              the program itself: app.Run(), the server, the UI
 extension/        where cut planners plug in
 pkg/geom/         points, rings, a ring with its holes (mm)
 pkg/dxfgeom/      DXF -> segments and closed contours
-pkg/cutplan/      the built-in cut planners: linear/ (bars) and rect/ (sheets)
+pkg/cutplan/      plugs the planners of ./cutplan into extension
+cutplan/          its own Go module: the cut planners (see below)
 tools/makeicon/   builds the .syso icon resource
 ```
 
@@ -53,11 +53,22 @@ modules can import them.
 | `pkg/dxfgeom/contours.go` | Segments joined into closed rings, outlines and holes told apart |
 | `pkg/dxfgeom/curve.go` | The curves as drawn (line, arc, ellipse, spline), kept beside the flat segments |
 | `extension/extension.go` | The `CutPlanner` interface and its registry |
-| `pkg/cutplan/cutplan.go` | Registers the built-in planners (`linear`, `rectangular`); jobs and results travel as JSON |
-| `pkg/cutplan/linear/` | Bars and tubes: `types.go` (job, result), `verify.go` (the independent verifier), `plan.go` (the planner) |
-| `pkg/cutplan/rect/` | Sheets on a panel saw, edge-to-edge cuts in 2 or 3 stages: same three files |
-| `pkg/cutplan/giben/` | A rectangular plan as the .AC and .AD files of a Giben saw (GVision), as Corte Certo writes them; format in `docs/GIBEN.md` |
-| `cmd/cuttest/` | Local test page: type parts and stock, calculate, see the bars or sheets drawn and the cut list |
+| `pkg/cutplan/cutplan.go` | The adapter: registers the planners of the `cutplan` module (`linear`, `rectangular`) as `extension.CutPlanner` |
+
+## The cutplan module
+
+`cutplan/` has its own `go.mod` (`github.com/ALEXKAKIUCHI/engtree-viewer/cutplan`)
+and depends only on the standard library: it knows nothing about the BOM,
+the screen or `extension`. The main `go.mod` points at it with a `replace`.
+Its tests run from inside the folder (`cd cutplan && go test ./...`).
+
+| File | Role |
+|---|---|
+| `cutplan/cutplan.go` | Lists the planners (`Planners`, `ByID`); jobs, results and verification travel as JSON |
+| `cutplan/linear/` | Bars and tubes: `types.go` (job, result), `verify.go` (the independent verifier), `plan.go` (the planner) |
+| `cutplan/rect/` | Sheets on a panel saw, edge-to-edge cuts in 2 or 3 stages: same three files |
+| `cutplan/giben/` | A rectangular plan as the .AC and .AD files of a Giben saw (GVision), as Corte Certo writes them; format in `cutplan/GIBEN.md` |
+| `cutplan/cmd/cuttest/` | Local test page: type parts and stock, calculate, see the bars or sheets drawn and the cut list |
 
 Each planner has a verifier written before it and sharing no code with it.
 Every plan made in the tests, and every plan shown by `cmd/cuttest`, goes
