@@ -3,3 +3,6 @@
 *.syso binary
 *.ico binary
 *.png binary
+
+# Saw files must keep their CRLF line ends.
+pkg/cutplan/giben/testdata/* -text
