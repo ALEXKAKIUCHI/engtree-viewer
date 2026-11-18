@@ -56,6 +56,7 @@ modules can import them.
 | `pkg/cutplan/cutplan.go` | Registers the built-in planners (`linear`, `rectangular`); jobs and results travel as JSON |
 | `pkg/cutplan/linear/` | Bars and tubes: `types.go` (job, result), `verify.go` (the independent verifier), `plan.go` (the planner) |
 | `pkg/cutplan/rect/` | Sheets on a panel saw, edge-to-edge cuts in 2 or 3 stages: same three files |
+| `pkg/cutplan/giben/` | A rectangular plan as the .AC and .AD files of a Giben saw (GVision); format in `docs/GIBEN.md` |
 | `cmd/cuttest/` | Local test page: type parts and stock, calculate, see the bars or sheets drawn and the cut list |
 
 Each planner has a verifier written before it and sharing no code with it.
