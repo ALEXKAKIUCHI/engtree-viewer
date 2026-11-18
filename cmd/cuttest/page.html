@@ -25,6 +25,9 @@
   table.grid td.c { text-align:center; width:56px; }
   table.grid td.x { width:26px; }
   button { font:inherit; }
+  .giben { margin:12px 0; display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center; }
+  .giben input { font:inherit; padding:3px 6px; }
+  .giben small { flex-basis:100%; opacity:.75; }
   .mini { border:none; background:none; color:var(--soft); cursor:pointer; padding:2px 6px; }
   .mini:hover { color:var(--bad); }
   .link { border:none; background:none; color:var(--accent); cursor:pointer; padding:4px 0; }
@@ -129,6 +132,8 @@ const TEXT = {
     overview: 'Overview', total_sheets: 'Sheets', total_bars: 'Bars', total_parts: 'Parts', total_offcuts: 'Offcuts kept', total_cuts: 'Cuts',
     plans: 'Different plans', losses: 'Loss at start / end',
     need_parts: 'Add at least one part and one stock size.',
+    giben: 'Files for the Giben saw (GVision)', material: 'Material', thickness: 'Thickness, mm', project: 'Project', export_giben: 'Download .AC and .AD',
+    giben_hint: 'Test first: open the files in GVision without cutting and compare with the drawing above.',
   },
   pt: {
     title: 'Teste do plano de corte', linear: 'Linear (barras e tubos)', rectangular: 'Retangular (chapas)',
@@ -151,6 +156,8 @@ const TEXT = {
     overview: 'Visão geral', total_sheets: 'Total de chapas', total_bars: 'Total de barras', total_parts: 'Total de peças', total_offcuts: 'Total de sobras (retalhos)', total_cuts: 'Total de cortes',
     plans: 'Planos de corte diferentes', losses: 'Perda no início / fim',
     need_parts: 'Informe pelo menos uma peça e um tamanho de estoque.',
+    giben: 'Arquivos para a seccionadora Giben (GVision)', material: 'Material', thickness: 'Espessura, mm', project: 'Projeto', export_giben: 'Baixar .AC e .AD',
+    giben_hint: 'Teste antes: abra os arquivos no GVision sem cortar e compare com o desenho acima.',
   },
 };
 let lang = localStorage.getItem('cuttest.lang') || ((navigator.language || 'en').startsWith('pt') ? 'pt' : 'en');
@@ -346,9 +353,30 @@ function drawResult() {
   for (const w of res.warnings || []) html += `<p class="warn">${esc(w)}</p>`;
   if (!running && !st.verified) html += st.problems.map(p => `<p class="warn">${esc(p)}</p>`).join('');
   if (items.length) html += totals(st.mode, res);
+  if (!running && st.verified && st.mode === 'rectangular' && items.length && lastJob) {
+    const g = data.giben || (data.giben = { material: 'MDF BRANCO 15MM', thickness: 15, project: '' });
+    html += `<div class="giben"><b>${esc(t('giben'))}</b>
+      <label>${esc(t('material'))} <input id="g-mat" value="${esc(g.material)}" maxlength="15" onchange="data.giben.material=this.value;save()"></label>
+      <label>${esc(t('thickness'))} <input id="g-th" value="${esc(g.thickness)}" size="5" onchange="data.giben.thickness=num(this.value);save()"></label>
+      <label>${esc(t('project'))} <input id="g-pr" value="${esc(g.project)}" maxlength="9" size="10" onchange="data.giben.project=this.value;save()"></label>
+      <button class="link" onclick="exportGiben()">${esc(t('export_giben'))}</button>
+      <small>${esc(t('giben_hint'))}</small></div>`;
+  }
   sum.innerHTML = html;
   plan.hidden = !items.length;
   plan.innerHTML = (st.mode === 'linear' ? drawBars(res) : drawSheets(res));
+}
+
+async function exportGiben() {
+  const g = data.giben;
+  const r = await fetch('/api/giben', { method: 'POST', body: JSON.stringify({
+    job: lastJob, result: lastStatus.result, material: g.material, thickness: num(g.thickness), project: g.project }) });
+  if (!r.ok) { alert(`${t('error')}: ${await r.text()}`); return; }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(await r.blob());
+  a.download = (r.headers.get('Content-Disposition') || '').match(/filename="(.+)"/)?.[1] || 'giben.zip';
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 
 // Equal bars (or sheets) in a row are shown once, with a count.
