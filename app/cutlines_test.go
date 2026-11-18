@@ -8,9 +8,8 @@ import (
 	"testing"
 )
 
-// A BOM in the layout of the Facta exports: the material code is in the
-// "Kardex" column. Three levels: product > drawer (x2) > parts.
-const factaBOM = `Nº do item;Nº da peça;Descrição;QTD.;Kardex;Comprimento;Largura
+// A BOM whose material code is in a "Cód. MP" column. Three levels: product > drawer (x2) > parts.
+const exampleBOM = `Nº do item;Nº da peça;Descrição;QTD.;Cód. MP;Comprimento;Largura
 1;49815P107;FRENTE 2;1;100234;800;730
 2;49815-GAV;GAVETA;2;;;
 2.1;49815P121;LATERAL GAVETA;2;100234;427;183
@@ -42,8 +41,8 @@ func bomFromCSV(t *testing.T, csv string) BomResult {
 	return buildBom(Product{Code: "49815", BomFile: p}, cfg)
 }
 
-func TestCutLinesFromKardexColumn(t *testing.T) {
-	bom := bomFromCSV(t, factaBOM)
+func TestCutLinesFromMaterialColumn(t *testing.T) {
+	bom := bomFromCSV(t, exampleBOM)
 	res := cutLines(bom, defaultCutColumns(), testMaterials(), 3)
 	if len(res.Warnings) != 0 {
 		t.Fatalf("warnings: %v", res.Warnings)
@@ -82,7 +81,7 @@ func TestCutLinesFromKardexColumn(t *testing.T) {
 }
 
 func TestCutLinesAlternativeCodeAndCase(t *testing.T) {
-	bom := bomFromCSV(t, "Item;Código;Descrição;Qtd;Kardex;Comp;Larg\n1;P1;LATERAL;1; mdf15br ;500;400\n")
+	bom := bomFromCSV(t, "Item;Código;Descrição;Qtd;Cod MP;Comp;Larg\n1;P1;LATERAL;1; mdf15br ;500;400\n")
 	res := cutLines(bom, defaultCutColumns(), testMaterials(), 1)
 	if len(res.Lines) != 1 || len(res.Lines[0].Warnings) != 0 || res.Lines[0].Thickness != 15 {
 		t.Fatalf("alternative code not matched: %+v", res.Lines)
@@ -90,7 +89,7 @@ func TestCutLinesAlternativeCodeAndCase(t *testing.T) {
 }
 
 func TestCutLinesUnitsAndBadQuantities(t *testing.T) {
-	bom := bomFromCSV(t, "Item;Código;Descrição;Qtd;Kardex;Comprimento;Largura\n1;P1;A;1,5;100234;50;40,5\n2;P2;B;x;100234;;30\n")
+	bom := bomFromCSV(t, "Item;Código;Descrição;Qtd;Código MP;Comprimento;Largura\n1;P1;A;1,5;100234;50;40,5\n2;P2;B;x;100234;;30\n")
 	cc := defaultCutColumns()
 	cc.Unit = "cm"
 	res := cutLines(bom, cc, testMaterials(), 1)

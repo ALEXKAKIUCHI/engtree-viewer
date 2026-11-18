@@ -14,7 +14,7 @@
   reports folder set in Settings. The PDF uses go-pdf/fpdf (MIT), the first
   outside package of the program
 - Cut plan, first part: settings for the BOM columns the plan reads
-  (material code, length, width, unit; "Kardex" is recognised by default),
+  (material code, length, width, unit; "Cód. MP" is recognised by default),
   a material list kept on this computer, and the parts of a product to cut,
   with quantities multiplied down the tree and checked against the list
   (unknown material, missing size, part larger than the sheet or bar)

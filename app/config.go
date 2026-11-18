@@ -42,7 +42,7 @@ type Columns struct {
 // quantity comes from Columns.Qty.
 //
 // Material holds the material code, which must be the code of a material
-// in the material list ("Kardex" in some companies). Thickness and kind
+// in the material list (the "Cód. MP" column). Thickness and kind
 // (sheet or bar) come from that list, not from the BOM.
 type CutColumns struct {
 	Material string `json:"material"`
@@ -163,7 +163,7 @@ func defaultColumns() Columns {
 
 func defaultCutColumns() CutColumns {
 	return CutColumns{
-		Material: "KARDEX|COD MATERIAL|CODIGO DO MATERIAL|CODIGO MATERIAL|MATERIAL CODE|MATERIAL",
+		Material: "COD MP|CODIGO MP|COD MATERIAL|CODIGO DO MATERIAL|CODIGO MATERIAL|MATERIAL CODE|MATERIAL",
 		Length:   "COMPRIMENTO|COMP|LENGTH",
 		Width:    "LARGURA|LARG|WIDTH",
 		Unit:     "mm",
