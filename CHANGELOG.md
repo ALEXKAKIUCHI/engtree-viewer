@@ -16,6 +16,16 @@
   from, and `Shapes` returns every closed contour with the curves that make
   it up. A drawing can be written back out with true arcs
 
+- New `pkg/cutplan/linear`: cut plans for bars and tubes, with stock used
+  in list order (offcuts first), kerf, a loss at each end of the bar and a
+  minimum offcut worth keeping
+- New `pkg/cutplan/rect`: cut plans for sheets on a panel saw, with
+  edge-to-edge cuts in 2 or 3 stages, grain kept unless the part may
+  rotate, edge trim and kerf
+- Both planners register through `extension` when the program starts, and
+  each comes with an independent verifier that every plan must pass
+- New `cmd/cuttest`: a local page to try the planners with real cases
+
 ## 0.2.0 — 2026-11-12
 
 - **Revisions**: the shop floor asks engineering to fix a part, the part shows

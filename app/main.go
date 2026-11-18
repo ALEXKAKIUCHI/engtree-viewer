@@ -16,6 +16,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/ALEXKAKIUCHI/engtree-viewer/pkg/cutplan"
 )
 
 // Shown in the About box. Bump both on every release and add a line to
@@ -324,6 +326,7 @@ func Run() {
 	noWindow := flag.Bool("no-window", false, "do not open a window and do not exit when idle (for development)")
 	flag.Parse()
 
+	cutplan.Register()
 	initPaths()
 	loadConfig()
 	cachePath = filepath.Join(dataDir, "products_cache.json")

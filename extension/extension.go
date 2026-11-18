@@ -1,10 +1,10 @@
 // Package extension is where extra features plug into EngTree.
 //
-// The free program registers nothing: the features simply do not appear.
-// Another build (the paid one) imports this package, registers what it
-// has and starts the same app. That is why there is no licence check, no
-// flag and no "if pro" anywhere in this repository: the free version
-// does not know that the other one exists.
+// The program registers the features it ships with (see pkg/cutplan) when
+// it starts. Another build (the paid one) imports this package, registers
+// what it has on top and starts the same app. That is why there is no
+// licence check, no flag and no "if pro" anywhere in this repository: the
+// free version does not know that the other one exists.
 package extension
 
 import (
