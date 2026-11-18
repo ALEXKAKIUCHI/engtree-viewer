@@ -3,6 +3,8 @@ package app
 import (
 	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -16,6 +18,8 @@ import (
 //	POST /api/cut_plan             start a plan (PlanRequest); a new one stops the old
 //	GET  /api/cut_plan             the plan as it is now
 //	POST /api/cut_plan/stop        stop it; what was found so far is kept
+//	GET  /api/cut_plan/pdf         the report; also saved in the reports folder when one is set
+//	GET  /api/cut_plan/xlsx        the summary spreadsheet; saved beside the report the same way
 func cutRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/cut_machine", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, currentMachine())
@@ -33,6 +37,52 @@ func cutRoutes(mux *http.ServeMux) {
 		}
 		rememberMachine(req.Machine)
 		writeJSON(w, plans.start(req, loadMaterials()))
+	})
+
+	mux.HandleFunc("/api/cut_plan/pdf", func(w http.ResponseWriter, r *http.Request) {
+		cfg := getConfig()
+		st := plans.get()
+		name := reportFileName(st)
+		path := ""
+		if cfg.CutReportsFolder != "" {
+			path = filepath.Join(cfg.CutReportsFolder, name)
+		}
+		b, err := cutReportPDF(st, pickReportLang(cfg.Language), path)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
+		if path != "" {
+			if err := os.WriteFile(path, b, 0644); err != nil {
+				w.Header().Set("X-Save-Error", err.Error())
+			}
+		}
+		w.Header().Set("Content-Type", "application/pdf")
+		w.Header().Set("Content-Disposition", `inline; filename="`+strings.ReplaceAll(name, `"`, "")+`"`)
+		_, _ = w.Write(b)
+	})
+
+	mux.HandleFunc("/api/cut_plan/xlsx", func(w http.ResponseWriter, r *http.Request) {
+		cfg := getConfig()
+		st := plans.get()
+		if len(st.Materials) == 0 {
+			http.Error(w, "no plan", http.StatusConflict)
+			return
+		}
+		b, err := writeXLSX("Resumo", cutSummaryRows(st, pickReportLang(cfg.Language)))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		name := strings.TrimSuffix(reportFileName(st), ".pdf") + ".xlsx"
+		if cfg.CutReportsFolder != "" {
+			if err := os.WriteFile(filepath.Join(cfg.CutReportsFolder, name), b, 0644); err != nil {
+				w.Header().Set("X-Save-Error", err.Error())
+			}
+		}
+		w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+		w.Header().Set("Content-Disposition", `attachment; filename="`+strings.ReplaceAll(name, `"`, "")+`"`)
+		_, _ = w.Write(b)
 	})
 
 	mux.HandleFunc("/api/cut_plan/stop", func(w http.ResponseWriter, r *http.Request) {
@@ -69,4 +119,13 @@ func cutRoutes(mux *http.ServeMux) {
 		qty, _ := strconv.Atoi(r.URL.Query().Get("qty"))
 		writeJSON(w, cutLines(buildBom(*p, cfg), cfg.CutColumns, loadMaterials(), qty))
 	})
+}
+
+// pickReportLang follows the language setting; an unset one means
+// Portuguese, the language of the shops that use the report today.
+func pickReportLang(setting string) string {
+	if setting == "en" {
+		return "en"
+	}
+	return "pt-BR"
 }

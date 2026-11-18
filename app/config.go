@@ -108,10 +108,14 @@ type Config struct {
 	DetailsPrefix string `json:"details_prefix"`
 	DetailsFile   string `json:"details_file"`
 
-	Columns       Columns    `json:"columns"`
-	CutColumns    CutColumns `json:"cut_columns"`
-	HiddenColumns []string   `json:"hidden_columns"` // spreadsheet columns not shown in the tree
-	FileTypes     []FileType `json:"file_types"`
+	Columns    Columns    `json:"columns"`
+	CutColumns CutColumns `json:"cut_columns"`
+
+	// Optional folder where cut plan reports are saved, for companies that
+	// do not print. Without it the report is only shown.
+	CutReportsFolder string     `json:"cut_reports_folder"`
+	HiddenColumns    []string   `json:"hidden_columns"` // spreadsheet columns not shown in the tree
+	FileTypes        []FileType `json:"file_types"`
 
 	// Optional folder with attachments (photos, videos, customer documents).
 	// A sub-folder or a loose file belongs to a code when its name is the
@@ -140,6 +144,7 @@ func applyShared(dst *Config, src Config) {
 	dst.DetailsFile = src.DetailsFile
 	dst.Columns = src.Columns
 	dst.CutColumns = src.CutColumns
+	dst.CutReportsFolder = src.CutReportsFolder
 	dst.HiddenColumns = src.HiddenColumns
 	dst.FileTypes = src.FileTypes
 	dst.RefFolder = src.RefFolder
@@ -353,6 +358,7 @@ func normalizeConfig(c *Config) {
 	c.RefFolder = strings.TrimSpace(c.RefFolder)
 	c.ProductsFolder = strings.TrimSpace(c.ProductsFolder)
 	c.RevisionsFolder = strings.TrimSpace(c.RevisionsFolder)
+	c.CutReportsFolder = strings.TrimSpace(c.CutReportsFolder)
 	c.SharedConfig = strings.TrimSpace(c.SharedConfig)
 }
 

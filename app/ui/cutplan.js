@@ -7,6 +7,8 @@ Object.assign(I18N.en, {
   cut_tab: 'Cut plan',
   s_cut_h: 'Cut plan columns',
   s_cut_hint: 'Where the cut plan finds its data in the BOM (or the details sheet). Same rules as above. Quantity comes from the Quantity column.',
+  s_cut_reports: 'Folder for cut plan reports (optional)', s_cut_reports_hint: 'Each PDF report and summary spreadsheet is also saved here, for shops that do not print.',
+  cut_xlsx: 'Summary (.xlsx)', cut_save_error: 'Could not save in the reports folder: {0}',
   s_cut_material: 'Material code (e.g. Kardex)', s_cut_length: 'Length', s_cut_width: 'Width', s_cut_unit: 'Unit of the sizes',
   cut_product: 'Product', cut_product_ph: 'product code', cut_qty: 'Quantity', cut_load: 'Load parts',
   cut_add_line: '+ Line', cut_materials_btn: 'Material list…', cut_none: 'Choose a product and click “Load parts”, or add lines by hand.',
@@ -38,6 +40,8 @@ Object.assign(I18N['pt-BR'], {
   cut_tab: 'Plano de corte',
   s_cut_h: 'Colunas do plano de corte',
   s_cut_hint: 'Onde o plano de corte acha os dados na BOM (ou na planilha de detalhes). Mesmas regras de cima. A quantidade vem da coluna Quantidade.',
+  s_cut_reports: 'Pasta dos relatórios do plano de corte (opcional)', s_cut_reports_hint: 'Cada relatório PDF e planilha de resumo também é gravado aqui, para quem não trabalha com papel.',
+  cut_xlsx: 'Resumo (.xlsx)', cut_save_error: 'Não foi possível gravar na pasta dos relatórios: {0}',
   s_cut_material: 'Código do material (ex.: Kardex)', s_cut_length: 'Comprimento', s_cut_width: 'Largura', s_cut_unit: 'Unidade das medidas',
   cut_product: 'Produto', cut_product_ph: 'código do produto', cut_qty: 'Quantidade', cut_load: 'Carregar peças',
   cut_add_line: '+ Linha', cut_materials_btn: 'Cadastro de materiais…', cut_none: 'Escolha um produto e clique em “Carregar peças”, ou acrescente linhas à mão.',
@@ -127,6 +131,7 @@ async function cutOpen() {
         <button class="primary" id="cut-run" onclick="cutRun()" data-i18n="cut_run"></button>
         <button id="cut-stop" onclick="cutStop()" data-i18n="cut_stop" disabled></button>
         <button id="cut-pdf" onclick="cutPDF()" data-i18n="cut_pdf" disabled></button>
+        <button id="cut-xlsx" onclick="cutXLSX()" data-i18n="cut_xlsx" disabled></button>
         <span class="muted" id="cut-run-state"></span>
       </div>
     </div>
@@ -296,7 +301,24 @@ function pollPlan() {
     if (cut.status.state === 'running') pollPlan();
   }, 600);
 }
-function cutPDF() { window.open('/api/cut_plan/pdf', '_blank'); }
+// The report opens in a new window; when a reports folder is set it is
+// saved there too, and a failure to save is shown.
+async function cutPDF() {
+  const r = await fetch('/api/cut_plan/pdf');
+  if (!r.ok) { toast(await r.text()); return; }
+  const err = r.headers.get('X-Save-Error');
+  if (err) toast(t('cut_save_error', err));
+  window.open(URL.createObjectURL(await r.blob()), '_blank');
+}
+async function cutXLSX() {
+  const r = await fetch('/api/cut_plan/xlsx');
+  if (!r.ok) { toast(await r.text()); return; }
+  const err = r.headers.get('X-Save-Error');
+  if (err) toast(t('cut_save_error', err));
+  const name = (r.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/);
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(await r.blob()); a.download = name ? name[1] : 'resumo.xlsx'; a.click();
+}
 
 // ---------- results ----------
 const PALETTE = ['#cfe3ff', '#ffe0b8', '#d4f5d4', '#f6d3f0', '#fff3b0', '#d8d4ff', '#c8f0ee', '#ffd6d6'];
@@ -314,12 +336,27 @@ function groupSheets(sheets) {
   return groups;
 }
 
+// useOf is the parts over the whole sheets or bars, as the report prints it.
+function useOf(mp) {
+  const res = mp.result;
+  if (mp.planner === 'linear') {
+    const total = res.bars.reduce((a, b) => a + b.length, 0);
+    return total ? res.bars.reduce((a, b) => a + b.cuts.reduce((x, c) => x + c.length, 0), 0) / total : 0;
+  }
+  return sheetUse(res.sheets, mp.parts);
+}
+function sheetUse(sheets, parts) {
+  const size = {}; parts.forEach(p => size[p.id] = p.cut_length * p.cut_width);
+  const total = sheets.reduce((a, s) => a + s.length * s.width, 0);
+  return total ? sheets.reduce((a, s) => a + s.placements.reduce((x, p) => x + (size[p.part_id] || 0), 0), 0) / total : 0;
+}
+
 function drawResult() {
   const st = cut.status;
   const run = st && st.state === 'running';
   document.getElementById('cut-run').disabled = run;
   document.getElementById('cut-stop').disabled = !run;
-  document.getElementById('cut-pdf').disabled = !st || !st.materials || !st.materials.some(m => m.state === 'done');
+  document.getElementById('cut-pdf').disabled = document.getElementById('cut-xlsx').disabled = run || !st || !st.materials || !st.materials.some(m => m.state === 'done');
   document.getElementById('cut-run-state').textContent = run ? t('cut_state_running') : '';
   if (!st) return;
   let html = '';
@@ -336,7 +373,7 @@ function drawResult() {
     }
     const count = res ? (mp.planner === 'linear' ? t('cut_bars_n', res.bars.length) : t('cut_sheets', res.sheets.length)) : '';
     html += `<div class="card"><h3>${esc(m.code)} · ${esc(m.description || '')} ${m.thickness ? fmtN(m.thickness) + ' mm' : ''}</h3>
-      <div class="row muted">${esc(t('cut_state_' + mp.state))} ${res ? '· ' + esc(count) + ' · ' + esc(t('cut_util', fmtN(res.utilization * 100))) : ''}
+      <div class="row muted">${esc(t('cut_state_' + mp.state))} ${res ? '· ' + esc(count) + ' · ' + esc(t('cut_util', fmtN(useOf(mp) * 100))) : ''}
       ${mp.error ? '· <span class="bad">' + esc(mp.error) + '</span>' : ''} <span class="grow"></span>${verdict}</div>${body}</div>`;
   });
   document.getElementById('cut-result').innerHTML = html;
@@ -381,7 +418,7 @@ function drawSheets(res, parts) {
     });
     svg += '</svg>';
     return `<div class="res-item"><div class="row"><b>${esc(t('cut_plan_n', gi + 1, groups.length))}</b>
-      <span class="muted">${esc(s.stock_id)} · ${fmtN(L)} × ${fmtN(W)} · ${esc(t('cut_times', g.count))} · ${esc(t('cut_util', fmtN(s.utilization * 100)))}</span></div>${svg}</div>`;
+      <span class="muted">${esc(s.stock_id)} · ${fmtN(L)} × ${fmtN(W)} · ${esc(t('cut_times', g.count))} · ${esc(t('cut_util', fmtN(sheetUse([s], parts) * 100)))}</span></div>${svg}</div>`;
   }).join('');
 }
 

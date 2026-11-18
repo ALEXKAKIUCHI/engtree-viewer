@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- New Cut plan tab: product and quantity, a conference table where sizes,
+  quantities, rotation and edge banding can be corrected for this plan only,
+  the material list editor, machine values remembered on this computer, one
+  calculation per material (every result checked by the verifier), the
+  sheets drawn and one line per bar
+- Cut plan report: an A4 PDF in the layout of the Corte Certo sheets (plan
+  i/n, quantity, material, sheet size and code, parts, use, loss, cuts, the
+  drawing with numbered parts and the part list, product and file location
+  in the footer), and a summary spreadsheet. Both can also be saved in a
+  reports folder set in Settings. The PDF uses go-pdf/fpdf (MIT), the first
+  outside package of the program
 - Cut plan, first part: settings for the BOM columns the plan reads
   (material code, length, width, unit; "Kardex" is recognised by default),
   a material list kept on this computer, and the parts of a product to cut,

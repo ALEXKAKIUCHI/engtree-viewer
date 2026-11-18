@@ -1,6 +1,7 @@
 # Architecture
 
-EngTree Viewer is one Go executable (standard library only) plus a single-page UI embedded in it.
+EngTree Viewer is one Go executable plus a single-page UI embedded in it. It uses the standard library
+and one outside package, [go-pdf/fpdf](https://github.com/go-pdf/fpdf) (MIT), for the cut plan report.
 
 ```
 Edge/Chrome --app window  <--HTTP 127.0.0.1-->  EngTreeViewer.exe  --reads-->  BOM + file folders
@@ -47,7 +48,12 @@ modules can import them.
 | `app/revisions.go` | Revision requests: one JSON file each in a shared folder, status, export |
 | `app/materials.go` | The material list (sheets and bars, code and alternative code, thickness, grain, size, offcuts), kept in `materials.json` in the data folder |
 | `app/cutlines.go` | The parts of a product that go to the cut plan: BOM lines with a material code, quantities multiplied down the tree, matched to the material list |
-| `app/cutroutes.go` | Cut plan API: `/api/materials`, `/api/cut_lines` |
+| `app/cutjobs.go` | Conference lines to one planner job per material: edge banding off, equal parts joined, rotation from the grain, offcuts first |
+| `app/cutrun.go` | Runs the jobs of a plan one after another through the registered planners, verifies each result, remembers the machine values |
+| `app/cutreport.go` | The A4 PDF report in the Corte Certo layout (one page per sheet layout, one per bar material) and the summary spreadsheet |
+| `app/xlsxwrite.go` | Minimal .xlsx writer (one sheet), read back by `xlsx.go` |
+| `app/cutroutes.go` | Cut plan API: `/api/materials`, `/api/cut_lines`, `/api/cut_machine`, `/api/cut_plan` (start, status, `stop`, `pdf`, `xlsx`) |
+| `app/ui/cutplan.js` | The Cut plan tab: conference table, material list, machine values, results |
 | `app/cad.go` | The viewer's IGES reader, and the DXF view built on `pkg/dxfgeom` |
 | `app/taskbar_windows.go` | Own taskbar identity/icon for the browser window |
 | `app/ui/index.html` | The whole interface |
