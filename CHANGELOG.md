@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- New `pkg/cutplan/giben`: a rectangular plan as the .AC and .AD files a
+  Giben panel saw (GVision) loads, in the layout Corte Certo exports. Tested
+  by rebuilding two Corte Certo exports byte for byte. The cut test screen
+  downloads them
 - The program is now a package (`app`) started by `cmd/engtree`, so another
   build can add features through the new `extension` package. The free build
   registers none, and there is no flag or licence check anywhere here
