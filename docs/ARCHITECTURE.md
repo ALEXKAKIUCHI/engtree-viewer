@@ -51,7 +51,8 @@ modules can import them.
 | `app/cutlines.go` | The parts of a product that go to the cut plan: BOM lines with a material code, quantities multiplied down the tree, matched to the material list |
 | `app/cutjobs.go` | Conference lines to one planner job per material: edge banding off, equal parts joined, rotation from the grain, offcuts first |
 | `app/cutrun.go` | Runs the jobs of a plan one after another through the registered planners, verifies each result, remembers the machine values |
-| `app/cutreport.go` | The A4 black-and-white PDF report (one page per sheet layout, one per bar material) and the summary spreadsheet |
+| `app/cutreport.go` | Hands the plan to `pkg/cutreport`, and writes the summary spreadsheet |
+| `pkg/cutreport/` | The A4 black-and-white PDF report (one page per sheet layout, one per bar material), from plain inputs, so any program that runs the planners prints the same report |
 | `app/xlsxwrite.go` | Minimal .xlsx writer (one sheet), read back by `xlsx.go` |
 | `app/cutroutes.go` | Cut plan API: `/api/materials` (and `/export`, `/import`), `/api/cut_lines`, `/api/cut_machine`, `/api/cut_plan` (start, status, `stop`, `pdf`, `xlsx`) |
 | `app/ui/cutplan.js` | The Cut plan tab: conference table, material list, machine values, results |

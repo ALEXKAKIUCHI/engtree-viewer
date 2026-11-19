@@ -11,7 +11,6 @@ import (
 
 	"github.com/ALEXKAKIUCHI/engtree-viewer/cutplan/rect"
 	registry "github.com/ALEXKAKIUCHI/engtree-viewer/pkg/cutplan"
-	"github.com/go-pdf/fpdf"
 )
 
 // Eleven parts on one 15 mm sheet of 1840 x 2740 (70.45 % of the sheet),
@@ -54,7 +53,7 @@ func TestCutReportPDF(t *testing.T) {
 	}
 	// One page per different sheet layout, one for the bars.
 	pages := len(regexp.MustCompile(`/Type /Page\b`).FindAll(b, -1))
-	want := len(groupLayouts(mustRect(t, st.Materials[0]).Sheets)) + 1
+	want := distinctLayouts(mustRect(t, st.Materials[0]).Sheets) + 1
 	if pages != want {
 		t.Errorf("%d pages, want %d", pages, want)
 	}
@@ -65,6 +64,21 @@ func TestCutReportPDF(t *testing.T) {
 	if _, err := cutReportPDF(PlanStatus{}, "pt-BR", ""); err == nil {
 		t.Error("a report with no plan should be refused")
 	}
+}
+
+// distinctLayouts counts the sheet layouts that differ, the way the report
+// gives each its page.
+func distinctLayouts(sheets []rect.SheetLayout) int {
+	seen := map[string]bool{}
+	for _, s := range sheets {
+		b, _ := json.Marshal(struct {
+			ID         string
+			L, W       float64
+			Placements []rect.Placement
+		}{s.StockID, s.Length, s.Width, s.Placements})
+		seen[string(b)] = true
+	}
+	return len(seen)
 }
 
 func mustRect(t *testing.T, mp MaterialPlan) (res rect.Result) {
@@ -102,20 +116,5 @@ func TestSummaryXLSXReadsBack(t *testing.T) {
 	last := rows[len(rows)-1]
 	if got := strings.Join(last, "|"); got != "100234|A|FRENTE|1 2.1|798|728.5|800|730|2" {
 		t.Errorf("part row: %s", got)
-	}
-}
-
-func TestFooterPathFits(t *testing.T) {
-	st := PlanStatus{Request: PlanRequest{Product: "P"}}
-	pdf := fpdf.New("P", "mm", "A4", "")
-	r := &report{pdf: pdf, tr: pdf.UnicodeTranslatorFromDescriptor(""), txt: reportText["pt-BR"], st: st,
-		path: `\\servidor\producao\seccionadora\planos de corte\2026\novembro\Plano de corte - 1000 - ARMARIO DE EXEMPLO COM PORTAS - 2026-11-18 2056.pdf`}
-	pdf.AddPage()
-	pdf.SetFont("Helvetica", "", 7)
-	r.footer()
-	// The footer writes into the PDF; it must not panic and the shortened
-	// path must keep the file name.
-	if pdf.Err() {
-		t.Fatal(pdf.Error())
 	}
 }
