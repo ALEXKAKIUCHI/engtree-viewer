@@ -14,8 +14,8 @@ import (
 	"github.com/go-pdf/fpdf"
 )
 
-// Eleven parts on one 15 mm sheet of 1840 x 2740, the sizes of a Corte
-// Certo reference sheet (its use is 70.45 %), and a tube.
+// Eleven parts on one 15 mm sheet of 1840 x 2740 (70.45 % of the sheet),
+// and a tube.
 func referenceLines() []PlanLine {
 	l := func(code, desc string, w, h float64) PlanLine {
 		return PlanLine{Code: code, Desc: desc, Material: "100234", Length: h, Width: w, Qty: 1}

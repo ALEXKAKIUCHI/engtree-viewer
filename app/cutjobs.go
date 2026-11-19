@@ -217,7 +217,7 @@ func jobParts(lines []PlanLine, m Material) []JobPart {
 			Qty: l.Qty, CanRotate: rot,
 		})
 	}
-	// Biggest first, as Corte Certo lists them.
+	// Biggest first.
 	sort.SliceStable(parts, func(i, j int) bool {
 		return parts[i].CutLength*math.Max(parts[i].CutWidth, 1) > parts[j].CutLength*math.Max(parts[j].CutWidth, 1)
 	})

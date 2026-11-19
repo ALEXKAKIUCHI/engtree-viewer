@@ -7,10 +7,11 @@
   the material list editor, machine values remembered on this computer, one
   calculation per material (every result checked by the verifier), the
   sheets drawn and one line per bar
-- Cut plan report: an A4 PDF in the layout of the Corte Certo sheets (plan
-  i/n, quantity, material, sheet size and code, parts, use, loss, cuts, the
-  drawing with numbered parts and the part list, product and file location
-  in the footer), and a summary spreadsheet. Both can also be saved in a
+- Cut plan report: an A4 PDF in black and white, made for any office
+  printer (header with the product, order, user, plan i/n and sheet code;
+  boxes for material, use, loss and saw plan; the drawing with numbered
+  parts and dotted offcuts; the part list; file location and page in the
+  footer), and a summary spreadsheet. Both can also be saved in a
   reports folder set in Settings. The PDF uses go-pdf/fpdf (MIT), the first
   outside package of the program
 - Cut plan, first part: settings for the BOM columns the plan reads
