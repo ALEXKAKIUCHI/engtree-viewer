@@ -41,7 +41,7 @@ modules can import them.
 | File | Role |
 |---|---|
 | `cmd/engtree/main.go` | calls `app.Run()`; holds `rsrc_windows_amd64.syso` |
-| `cmd/engtreecorte/` | EngTree Corte (`EngTreeCorte.exe`): `page.html` (the screen: plan data, parts with description and project, stock, settings, drawings numbered as in the report, dark or light), `server.go` (runs the planners), `export.go` (`/api/pdf`, and `/api/production`: the PDF and the Giben .AC/.AD in one ZIP, after the verifier) |
+| `cmd/engtreecorte/` | EngTree Corte (`EngTreeCorte.exe`): `page.html` (the screen: plan data, parts with description and project, stock, settings, drawings numbered as in the report, dark or light), `materials.go` (splits the parts and stock by material code: one job per code, the parts of a code without stock reported), `server.go` (runs the materials one after another), `export.go` (`/api/pdf`, and `/api/production`: one PDF for all materials and the Giben .AC/.AD of each sheet material in one ZIP, after the verifier) |
 | `pkg/window/window.go` | Opens the page in Edge or Chrome app mode; stops the program when the window closes or after 3 minutes without requests |
 | `app/main.go` | Product list, routes, folder reachability, path safety, window launch, auto exit |
 | `app/config.go` | Settings (`engtree.json`), defaults, portable mode, shared settings file, modes |

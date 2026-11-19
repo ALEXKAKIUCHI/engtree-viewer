@@ -17,22 +17,25 @@ import (
 	"github.com/ALEXKAKIUCHI/engtree-viewer/pkg/cutreport"
 )
 
-// exportRequest is a finished plan with what the report prints about it.
+// exportRequest is a finished plan, one entry per material, with what the
+// report prints about it.
 type exportRequest struct {
-	Mode   string          `json:"mode"` // cutplan.LinearID or cutplan.RectangularID
-	Job    json.RawMessage `json:"job"`
-	Result json.RawMessage `json:"result"`
-	Lang   string          `json:"lang"` // "pt" or "en"
-	Info   struct {
-		Product      string  `json:"product"`
-		ProductDesc  string  `json:"product_desc"`
-		Order        string  `json:"order"`
-		User         string  `json:"user"`
-		MaterialCode string  `json:"material_code"`
-		MaterialDesc string  `json:"material_desc"`
-		Thickness    float64 `json:"thickness"`
+	Mode string `json:"mode"` // cutplan.LinearID or cutplan.RectangularID
+	Lang string `json:"lang"` // "pt" or "en"
+	Info struct {
+		Product     string `json:"product"`
+		ProductDesc string `json:"product_desc"`
+		Order       string `json:"order"`
+		User        string `json:"user"`
 	} `json:"info"`
-	// Parts adds a description and a project to the parts of the job, by ID.
+	Materials []struct {
+		Code      string          `json:"code"`
+		Desc      string          `json:"desc"`
+		Thickness float64         `json:"thickness"`
+		Job       json.RawMessage `json:"job"`
+		Result    json.RawMessage `json:"result"`
+	} `json:"materials"`
+	// Parts adds a description and a project to the parts of the jobs, by ID.
 	Parts []struct {
 		ID      string `json:"id"`
 		Desc    string `json:"desc"`
@@ -46,24 +49,20 @@ type exportFile struct {
 	data []byte
 }
 
-// build checks the plan with the verifier and writes the report and, when
-// production is asked for a sheet plan, the Giben files.
+// build checks every material with the verifier and writes one report for
+// all of them and, when production is asked for, the Giben files of each
+// sheet material.
 func (req exportRequest) build(production bool) ([]exportFile, string, error) {
 	p, ok := cutplan.ByID(req.Mode)
 	if !ok {
 		return nil, "", fmt.Errorf("unknown mode %q", req.Mode)
 	}
-	if problems := p.Verify(req.Job, req.Result); len(problems) > 0 {
-		return nil, "", fmt.Errorf("the plan did not pass the verifier: %s", strings.Join(problems, "; "))
+	if len(req.Materials) == 0 {
+		return nil, "", fmt.Errorf("no plan to export")
 	}
 	meta := map[string]int{}
 	for i, m := range req.Parts {
 		meta[m.ID] = i
-	}
-	info := req.Info
-	plan := cutreport.Plan{
-		Material: cutreport.Material{Code: info.MaterialCode, Description: info.MaterialDesc, Thickness: info.Thickness},
-		Planner:  req.Mode, Job: req.Job, Result: req.Result,
 	}
 	part := func(id string, length, width float64, qty int) cutreport.Part {
 		cp := cutreport.Part{ID: id, Code: id, CutLength: length, CutWidth: width, Qty: qty}
@@ -72,80 +71,108 @@ func (req exportRequest) build(production bool) ([]exportFile, string, error) {
 		}
 		return cp
 	}
-	var rjob rect.Job
-	var rres rect.Result
-	switch req.Mode {
-	case cutplan.RectangularID:
-		if err := json.Unmarshal(req.Job, &rjob); err != nil {
-			return nil, "", err
-		}
-		if err := json.Unmarshal(req.Result, &rres); err != nil {
-			return nil, "", err
-		}
-		for _, jp := range rjob.Parts {
-			plan.Parts = append(plan.Parts, part(jp.ID, jp.Length, jp.Width, jp.Quantity))
-		}
-	case cutplan.LinearID:
-		var job linear.Job
-		if err := json.Unmarshal(req.Job, &job); err != nil {
-			return nil, "", err
-		}
-		for _, jp := range job.Parts {
-			plan.Parts = append(plan.Parts, part(jp.ID, jp.Length, 0, jp.Quantity))
-		}
-		for _, st := range job.Stock {
-			if st.Length > plan.Material.Length {
-				plan.Material.Length = st.Length
-			}
-		}
-	}
-
+	info := req.Info
 	head := cutreport.Header{Product: info.Product, ProductDesc: info.ProductDesc, ProductQty: 1,
 		Order: info.Order, User: info.User, Created: time.Now()}
+	base := cutreport.FileName(head)
+
+	var plans []cutreport.Plan
+	var saw []exportFile
+	usedNames := map[string]int{}
+	for _, m := range req.Materials {
+		name := m.Code
+		if name == "" {
+			name = m.Desc
+		}
+		if problems := p.Verify(m.Job, m.Result); len(problems) > 0 {
+			return nil, "", fmt.Errorf("%s: the plan did not pass the verifier: %s", name, strings.Join(problems, "; "))
+		}
+		plan := cutreport.Plan{
+			Material: cutreport.Material{Code: m.Code, Description: m.Desc, Thickness: m.Thickness},
+			Planner:  req.Mode, Job: m.Job, Result: m.Result,
+		}
+		switch req.Mode {
+		case cutplan.RectangularID:
+			var job rect.Job
+			var res rect.Result
+			if err := json.Unmarshal(m.Job, &job); err != nil {
+				return nil, "", err
+			}
+			if err := json.Unmarshal(m.Result, &res); err != nil {
+				return nil, "", err
+			}
+			for _, jp := range job.Parts {
+				plan.Parts = append(plan.Parts, part(jp.ID, jp.Length, jp.Width, jp.Quantity))
+			}
+			if production && len(res.Sheets) > 0 {
+				labels := map[string]giben.PartInfo{}
+				for i, jp := range job.Parts {
+					label := jp.ID
+					if k, ok := meta[jp.ID]; ok && req.Parts[k].Desc != "" {
+						label = req.Parts[k].Desc
+					}
+					labels[jp.ID] = giben.PartInfo{Code: i + 1, Label: label}
+				}
+				desc := info.ProductDesc
+				if desc == "" {
+					desc = info.Product
+				}
+				matText := m.Desc
+				if strings.TrimSpace(matText) == "" {
+					matText = m.Code
+				}
+				ac, ad, err := giben.Write(job, res, giben.Export{
+					Material: matText, Thickness: m.Thickness, ProjectCode: info.Product,
+					Description: desc, Date: time.Now(), Parts: labels,
+				})
+				if err != nil {
+					return nil, "", fmt.Errorf("%s: %w", name, err)
+				}
+				// The saw files keep the short name GVision is used to:
+				// material and thickness. Two materials with the same name get
+				// a number.
+				file := fmt.Sprintf("%s_%.1f", strings.Join(strings.Fields(matText), "_"), m.Thickness)
+				if strings.TrimSpace(matText) == "" {
+					file = "plano"
+				}
+				usedNames[file]++
+				if n := usedNames[file]; n > 1 {
+					file = fmt.Sprintf("%s_%d", file, n)
+				}
+				saw = append(saw, exportFile{file + ".AC", ac}, exportFile{file + ".AD", ad})
+			}
+		case cutplan.LinearID:
+			var job linear.Job
+			if err := json.Unmarshal(m.Job, &job); err != nil {
+				return nil, "", err
+			}
+			for _, jp := range job.Parts {
+				plan.Parts = append(plan.Parts, part(jp.ID, jp.Length, 0, jp.Quantity))
+			}
+			for _, st := range job.Stock {
+				if st.Length > plan.Material.Length {
+					plan.Material.Length = st.Length
+				}
+			}
+		}
+		plans = append(plans, plan)
+	}
+
 	lang := "pt-BR"
 	if req.Lang == "en" {
 		lang = "en"
 	}
-	base := cutreport.FileName(head)
-	pdf, err := cutreport.PDF(head, []cutreport.Plan{plan}, lang, "")
+	pdf, err := cutreport.PDF(head, plans, lang, "")
 	if err != nil {
 		return nil, "", err
 	}
-	files := []exportFile{{base + ".pdf", pdf}}
-	if production && req.Mode == cutplan.RectangularID {
-		labels := map[string]giben.PartInfo{}
-		for i, jp := range rjob.Parts {
-			label := jp.ID
-			if k, ok := meta[jp.ID]; ok && req.Parts[k].Desc != "" {
-				label = req.Parts[k].Desc
-			}
-			labels[jp.ID] = giben.PartInfo{Code: i + 1, Label: label}
-		}
-		desc := info.ProductDesc
-		if desc == "" {
-			desc = info.Product
-		}
-		ac, ad, err := giben.Write(rjob, rres, giben.Export{
-			Material: info.MaterialDesc, Thickness: info.Thickness, ProjectCode: info.Product,
-			Description: desc, Date: time.Now(), Parts: labels,
-		})
-		if err != nil {
-			return nil, "", err
-		}
-		// The saw files keep the short name GVision is used to.
-		saw := fmt.Sprintf("%s_%.1f", strings.Join(strings.Fields(info.MaterialDesc), "_"), info.Thickness)
-		if strings.TrimSpace(info.MaterialDesc) == "" {
-			saw = "plano"
-		}
-		files = append(files, exportFile{saw + ".AC", ac}, exportFile{saw + ".AD", ad})
-	}
-	return files, base, nil
+	return append([]exportFile{{base + ".pdf", pdf}}, saw...), base, nil
 }
 
 func readExport(w http.ResponseWriter, r *http.Request) (exportRequest, bool) {
 	var req exportRequest
-	if r.Method != http.MethodPost || json.NewDecoder(r.Body).Decode(&req) != nil || len(req.Job) == 0 || len(req.Result) == 0 {
-		http.Error(w, "POST {mode, job, result, info, parts}", http.StatusBadRequest)
+	if r.Method != http.MethodPost || json.NewDecoder(r.Body).Decode(&req) != nil || len(req.Materials) == 0 {
+		http.Error(w, "POST {mode, info, materials: [{code, desc, thickness, job, result}], parts}", http.StatusBadRequest)
 		return req, false
 	}
 	return req, true

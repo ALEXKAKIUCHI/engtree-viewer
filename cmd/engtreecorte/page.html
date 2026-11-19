@@ -29,11 +29,13 @@
   .tabs button.on { background:var(--accent); border-color:var(--accent); color:var(--accent-ink); font-weight:600; }
   select, input[type=text] { background:var(--input); border:1px solid var(--line); border-radius:5px; padding:4px 6px; }
   input[type=text]:focus, select:focus, button:focus-visible { outline:none; border-color:var(--accent); box-shadow:0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent); }
-  main { display:grid; grid-template-columns:minmax(460px, 640px) 1fr; gap:16px; padding:14px 18px; align-items:start; }
+  main { display:grid; grid-template-columns:minmax(520px, 780px) 1fr; gap:16px; padding:14px 18px; align-items:start; }
   @media (max-width: 1000px) { main { grid-template-columns:1fr; } }
   section { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:12px 14px; margin-bottom:12px; }
   h2 { font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; color:var(--soft); margin:0 0 8px; display:flex; gap:8px; align-items:center; }
-  table.grid { width:100%; border-collapse:collapse; table-layout:fixed; }
+  table.grid { width:100%; min-width:720px; border-collapse:collapse; table-layout:fixed; }
+  .scroll { overflow-x:auto; }
+  .totals + h2 { margin-top:14px; }
   table.grid th { text-align:left; font-weight:600; font-size:12px; color:var(--soft); padding:2px 4px; white-space:nowrap; }
   table.grid td { padding:1px 2px; }
   table.grid input[type=text] { width:100%; padding:4px 6px; }
@@ -123,13 +125,13 @@
     </section>
     <section>
       <h2 data-t="parts"></h2>
-      <table class="grid" id="parts"></table>
+      <div class="scroll"><table class="grid" id="parts"></table></div>
       <button class="link" onclick="addRow('parts')" data-t="add_row"></button>
-      <p class="hint"><span data-t="paste_hint"></span> <span id="rotate-hint" data-t="rotate_hint"></span></p>
+      <p class="hint"><span data-t="material_hint"></span> <span data-t="paste_hint"></span> <span id="rotate-hint" data-t="rotate_hint"></span></p>
     </section>
     <section>
       <h2 data-t="stock"></h2>
-      <table class="grid" id="stock"></table>
+      <div class="scroll"><table class="grid" id="stock"></table></div>
       <button class="link" onclick="addRow('stock')" data-t="add_row"></button>
       <p class="hint" data-t="stock_hint"></p>
     </section>
@@ -146,7 +148,7 @@
   </div>
   <div>
     <section id="summary"><div class="empty" data-t="nothing_yet"></div></section>
-    <section id="plan" hidden></section>
+    <div id="plan" hidden></div>
   </div>
 </main>
 <div class="toast" id="toast"></div>
@@ -158,7 +160,10 @@ const TEXT = {
     linear: 'Linear (bars and tubes)', rectangular: 'Rectangular (sheets)',
     open: 'Open plan…', save: 'Save plan', analysis: 'Send for analysis', theme_dark: 'Dark', theme_light: 'Light',
     plan_data: 'Plan', product: 'Product / project', product_desc: 'Description', order: 'Order', user: 'User',
-    material_code: 'Material code', material_desc: 'Material', thickness: 'Thickness, mm',
+    material: 'Mat. code', material_desc: 'Material', thick: 'Thick.',
+    no_stock: '{0}: no stock with this material code. Parts left out: {1}', no_code: '(no code)', materials_n: 'materials',
+    mat_state_waiting: 'waiting', mat_state_running: 'calculating…', mat_state_done: 'done', mat_state_error: 'error', mat_state_stopped: 'stopped',
+    material_hint: 'Parts are cut from the stock with the same material code (Mat. code). Each code is planned on its own; a part without a code uses the stock without a code.',
     parts: 'Parts', stock: 'Stock, in order of use', settings: 'Settings', add_row: '+ add row',
     paste_hint: 'Tab moves to the next cell; at the end of the table it adds a row. Rows copied from a spreadsheet can be pasted.', rotate_hint: 'Space or a click turns "Can rotate" on and off.',
     stock_hint: 'Offcuts first, full size last. Quantity 0 = as many as needed.',
@@ -189,7 +194,10 @@ const TEXT = {
     linear: 'Linear (barras e tubos)', rectangular: 'Retangular (chapas)',
     open: 'Abrir plano…', save: 'Salvar plano', analysis: 'Enviar para análise', theme_dark: 'Escuro', theme_light: 'Claro',
     plan_data: 'Dados do plano', product: 'Produto / projeto', product_desc: 'Descrição', order: 'Pedido', user: 'Usuário',
-    material_code: 'Código do material', material_desc: 'Material', thickness: 'Espessura, mm',
+    material: 'Cód. MP', material_desc: 'Material', thick: 'Esp.',
+    no_stock: '{0}: não há chapa ou barra com este código no estoque. Peças que ficaram de fora: {1}', no_code: '(sem código)', materials_n: 'materiais',
+    mat_state_waiting: 'na fila', mat_state_running: 'calculando…', mat_state_done: 'pronto', mat_state_error: 'erro', mat_state_stopped: 'parado',
+    material_hint: 'As peças saem do estoque com o mesmo código de matéria-prima (Cód. MP). Cada código é calculado separado; peça sem código usa o estoque sem código.',
     parts: 'Peças', stock: 'Estoque, na ordem de uso', settings: 'Ajustes', add_row: '+ adicionar linha',
     paste_hint: 'Tab passa para a próxima célula; no fim da tabela, cria uma linha. Dá para colar linhas copiadas de uma planilha.', rotate_hint: 'Espaço ou um clique liga e desliga o "Pode girar".',
     stock_hint: 'Retalhos primeiro, tamanho inteiro por último. Quantidade 0 = quantas forem necessárias.',
@@ -218,37 +226,39 @@ const TEXT = {
   },
 };
 let lang = localStorage.getItem('engtreecorte.lang') || ((navigator.language || 'en').startsWith('pt') ? 'pt' : 'en');
-const t = k => TEXT[lang][k] ?? k;
+const t = (k, ...a) => String(TEXT[lang][k] ?? k).replace(/\{(\d)\}/g, (_, i) => a[i] ?? '');
 
 // ---------- what each mode asks for ----------
 // Columns: [key, label, kind] — kind: text, num, int, rotate.
 const MODES = {
   linear: {
-    parts: [['id', 'id', 'text'], ['desc', 'desc', 'text'], ['length', 'length', 'num'], ['quantity', 'qty', 'int'], ['project', 'project', 'text']],
-    stock: [['id', 'id', 'text'], ['length', 'length', 'num'], ['quantity', 'qty', 'int']],
+    parts: [['id', 'id', 'text'], ['desc', 'desc', 'text'], ['material', 'material', 'text'], ['length', 'length', 'num'], ['quantity', 'qty', 'int'], ['project', 'project', 'text']],
+    stock: [['id', 'id', 'text'], ['material', 'material', 'text'], ['material_desc', 'material_desc', 'text'], ['thickness', 'thick', 'num'],
+            ['length', 'length', 'num'], ['quantity', 'qty', 'int']],
     settings: [['kerf', 'kerf', 3], ['start_loss', 'start_loss', 0], ['end_loss', 'end_loss', 0],
                ['min_offcut', 'min_offcut', 300], ['time_limit_sec', 'time_limit', 0]],
     example: {
-      parts: [['T-850', 'TRAVESSA', 850, 12, ''], ['T-1200', 'PERNA', 1200, 8, ''], ['T-2310', 'LONGARINA', 2310, 5, ''],
-              ['T-455', 'REFORÇO', 455, 20, ''], ['T-3050', 'BASE', 3050, 3, '']],
-      stock: [['retalho 2400', 2400, 2], ['barra 6000', 6000, 0]],
+      parts: [['T-850', 'TRAVESSA', 'TB3030', 850, 12, ''], ['T-1200', 'PERNA', 'TB3030', 1200, 8, ''], ['T-2310', 'LONGARINA', 'TB5030', 2310, 5, ''],
+              ['T-455', 'REFORÇO', 'TB3030', 455, 20, ''], ['T-3050', 'BASE', 'TB5030', 3050, 3, '']],
+      stock: [['retalho 2400', 'TB3030', 'TUBO 30X30', 1.5, 2400, 2], ['barra 6000', 'TB3030', 'TUBO 30X30', 1.5, 6000, 0],
+              ['barra 6000', 'TB5030', 'TUBO 50X30', 2, 6000, 0]],
       settings: { kerf: 3, start_loss: 20, end_loss: 150, min_offcut: 300, time_limit_sec: 0 },
-      material: { code: 'TB3030', desc: 'TUBO 30X30', thickness: 1.5 },
     },
   },
   rectangular: {
-    parts: [['id', 'id', 'text'], ['desc', 'desc', 'text'], ['length', 'length', 'num'], ['width', 'width', 'num'],
+    parts: [['id', 'id', 'text'], ['desc', 'desc', 'text'], ['material', 'material', 'text'], ['length', 'length', 'num'], ['width', 'width', 'num'],
             ['quantity', 'qty', 'int'], ['can_rotate', 'rotate', 'rotate'], ['project', 'project', 'text']],
-    stock: [['id', 'id', 'text'], ['length', 'length', 'num'], ['width', 'width', 'num'], ['quantity', 'qty', 'int']],
+    stock: [['id', 'id', 'text'], ['material', 'material', 'text'], ['material_desc', 'material_desc', 'text'], ['thickness', 'thick', 'num'],
+            ['length', 'length', 'num'], ['width', 'width', 'num'], ['quantity', 'qty', 'int']],
     settings: [['kerf', 'kerf', 4], ['edge_trim', 'edge_trim', 10], ['stages', 'stages', 3], ['first_cut', 'first_cut', ''],
                ['min_offcut_length', 'min_offcut_length', 300], ['min_offcut_width', 'min_offcut_width', 300],
                ['time_limit_sec', 'time_limit', 0]],
     example: {
-      parts: [['A1', 'LATERAL', 2100, 550, 4, false, ''], ['A2', 'BASE', 1164, 550, 4, true, ''], ['A3', 'PRATELEIRA', 1164, 520, 10, true, ''],
-              ['A4', 'PORTA', 2090, 395, 6, false, ''], ['A5', 'FUNDO', 2100, 1190, 2, true, ''], ['A6', 'RODAPÉ', 1164, 100, 4, true, '']],
-      stock: [['retalho', 1300, 900, 1], ['chapa 2750x1830', 2750, 1830, 0]],
+      parts: [['A1', 'LATERAL', 'MDF15', 2100, 550, 4, false, ''], ['A2', 'BASE', 'MDF15', 1164, 550, 4, true, ''], ['A3', 'PRATELEIRA', 'MDF15', 1164, 520, 10, true, ''],
+              ['A4', 'PORTA', 'MDF18', 2090, 395, 6, false, ''], ['A5', 'FUNDO', 'MDF6', 2100, 1190, 2, true, ''], ['A6', 'RODAPÉ', 'MDF15', 1164, 100, 4, true, '']],
+      stock: [['retalho', 'MDF15', 'MDF BRANCO 15MM', 15, 1300, 900, 1], ['chapa 2750x1830', 'MDF15', 'MDF BRANCO 15MM', 15, 2750, 1830, 0],
+              ['chapa 2750x1830', 'MDF18', 'MDF BRANCO 18MM', 18, 2750, 1830, 0], ['chapa 2750x1830', 'MDF6', 'MDF BRANCO 6MM', 6, 2750, 1830, 0]],
       settings: { kerf: 4, edge_trim: 10, stages: 3, first_cut: '', min_offcut_length: 300, min_offcut_width: 300, time_limit_sec: 0 },
-      material: { code: 'MDF15', desc: 'MDF BRANCO 15MM', thickness: 15 },
     },
   },
 };
@@ -257,11 +267,11 @@ const STAGES = [2, 3];
 // ---------- state ----------
 let mode = localStorage.getItem('engtreecorte.mode') || 'rectangular';
 if (!MODES[mode]) mode = 'rectangular';
-let data = JSON.parse(localStorage.getItem('engtreecorte.data') || 'null') || migrateOld();
+let data = upgrade(JSON.parse(localStorage.getItem('engtreecorte.data') || 'null') || migrateOld());
 function blank(m) {
   const settings = {};
   for (const [key, , def] of MODES[m].settings) settings[key] = def;
-  return { parts: [emptyRow(m, 'parts')], stock: [emptyRow(m, 'stock')], settings, material: { code: '', desc: '', thickness: '' } };
+  return { parts: [emptyRow(m, 'parts')], stock: [emptyRow(m, 'stock')], settings };
 }
 function emptyRow(m, table) { return MODES[m][table].map(([, , kind]) => kind === 'rotate' ? false : ''); }
 // The test screen kept its data under cuttest.*, with no description or
@@ -278,6 +288,22 @@ function migrateOld() {
   if (old.giben) {
     d.header.product = old.giben.project || '';
     if (d.rectangular) d.rectangular.material = { code: '', desc: old.giben.material || '', thickness: old.giben.thickness || '' };
+  }
+  return d;
+}
+// Version 2 had one material for the whole plan, in the plan data; version
+// 3 gives each part and each stock row its material code. The old material
+// goes to every row, so the plan still calculates the same way.
+function upgrade(d) {
+  if (d.v === 2) {
+    for (const m in MODES) {
+      if (!d[m]) continue;
+      const mat = d[m].material || {};
+      d[m].parts = (d[m].parts || []).map(r => [r[0], r[1], mat.code || '', ...r.slice(2)]);
+      d[m].stock = (d[m].stock || []).map(r => [r[0], mat.code || '', mat.desc || '', mat.thickness || '', ...r.slice(1)]);
+      delete d[m].material;
+    }
+    d.v = 3;
   }
   return d;
 }
@@ -314,12 +340,9 @@ function drawAll() {
 
 // ---------- plan data ----------
 function drawInfo() {
-  const h = data.header, m = data[mode].material;
-  const f = (label, obj, key, cls = '') => `<label class="${cls}">${esc(t(label))}<input type="text" value="${esc(obj[key])}"
-    oninput="${obj === h ? 'data.header' : `data['${mode}'].material`}['${key}']=this.value;save()"></label>`;
-  document.getElementById('info').innerHTML = f('product', h, 'product') + f('product_desc', h, 'product_desc') +
-    f('order', h, 'order') + f('user', h, 'user') + f('material_code', m, 'code') + f('thickness', m, 'thickness') +
-    f('material_desc', m, 'desc', 'wide');
+  const h = data.header;
+  const f = key => `<label>${esc(t(key))}<input type="text" value="${esc(h[key])}" oninput="data.header['${key}']=this.value;save()"></label>`;
+  document.getElementById('info').innerHTML = f('product') + f('product_desc') + f('order') + f('user');
 }
 
 // ---------- tables ----------
@@ -327,8 +350,9 @@ function drawTable(table) {
   const cols = MODES[mode][table], rows = data[mode][table];
   const swaps = table === 'parts' && mode === 'rectangular';
   // Column widths: the description gets the room, numbers stay narrow.
-  const width = (key, kind) => kind === 'rotate' ? '112px' : key === 'desc' ? (table === 'parts' ? '30%' : '') :
-    key === 'id' ? (table === 'parts' ? '15%' : '') : key === 'project' ? '13%' : kind === 'int' ? '58px' : kind === 'num' ? (table === 'parts' ? '72px' : '') : '';
+  const width = (key, kind) => kind === 'rotate' ? '96px' : key === 'desc' ? '' : key === 'material_desc' ? '' :
+    key === 'material' ? '96px' : key === 'id' ? (table === 'parts' ? '96px' : '150px') : key === 'project' ? '90px' :
+    key === 'thickness' ? '52px' : kind === 'int' ? '52px' : kind === 'num' ? '66px' : '';
   let html = '<colgroup>' + cols.map(([key, , kind]) => `<col style="width:${width(key, kind)}">` + (swaps && key === 'width' ? '<col style="width:34px">' : '')).join('') +
     '<col style="width:28px"></colgroup><tr>' + cols.map(([key, label, kind]) => {
     if (kind === 'rotate') return `<th>${esc(t(label))}<br><button class="hbtn" onclick="setAll(true)">${esc(t('all'))}</button>
@@ -416,7 +440,7 @@ function drawSettings() {
 function setSetting(key, v) { data[mode].settings[key] = v; save(); }
 function loadExample() {
   const ex = MODES[mode].example;
-  data[mode] = { parts: ex.parts.map(r => [...r]), stock: ex.stock.map(r => [...r]), settings: { ...ex.settings }, material: { ...ex.material } };
+  data[mode] = { parts: ex.parts.map(r => [...r]), stock: ex.stock.map(r => [...r]), settings: { ...ex.settings } };
   save(); lastStatus = null; drawAll();
 }
 function clearAll() { data[mode] = blank(mode); save(); lastStatus = null; drawAll(); }
@@ -487,7 +511,7 @@ const stamp = () => new Date().toISOString().slice(0, 16).replace('T', ' ').repl
 // File names lose their accents: some browsers refuse to save them otherwise.
 const safe = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[<>:"/\\|?*]/g, '_').trim();
 function savePlan() {
-  const body = { kind: 'engtree-corte-plan', v: 2, mode, header: data.header, plan: data[mode] };
+  const body = { kind: 'engtree-corte-plan', v: 3, mode, header: data.header, plan: data[mode] };
   download(`Plano ${safe(data.header.product) || mode} - ${stamp()}.json`, new Blob([JSON.stringify(body, null, 1)], { type: 'application/json' }));
   toast(t('saved'));
 }
@@ -499,7 +523,8 @@ async function loadPlanFile(input) {
   try {
     const d = JSON.parse(await f.text());
     if (!['engtree-corte-plan', 'engtree-corte-analysis'].includes(d.kind) || !MODES[d.mode] || !d.plan) throw 0;
-    data[d.mode] = { ...blank(d.mode), ...d.plan };
+    const plan = d.v === 2 ? upgrade({ v: 2, [d.mode]: d.plan })[d.mode] : d.plan;
+    data[d.mode] = { ...blank(d.mode), ...plan };
     if (d.header) data.header = { ...data.header, ...d.header };
     save(); toast(t('opened')); setMode(d.mode);
   } catch (e) { alert(t('bad_file')); }
@@ -509,16 +534,17 @@ async function loadPlanFile(input) {
 async function sendAnalysis() {
   let version = '';
   try { version = (await (await fetch('/api/version')).json()).version; } catch (e) {}
-  const body = { kind: 'engtree-corte-analysis', v: 2, version, created: new Date().toISOString(), lang, mode,
+  const body = { kind: 'engtree-corte-analysis', v: 3, version, created: new Date().toISOString(), lang, mode,
     header: data.header, plan: data[mode], job: lastJob || buildJob(), status: lastStatus, userAgent: navigator.userAgent };
   download(`Analise ${safe(data.header.product) || mode} - ${stamp()}.json`, new Blob([JSON.stringify(body, null, 1)], { type: 'application/json' }));
   toast(t('analysis_done'));
 }
 async function exportPlan(kind) {
-  const m = data[mode].material, h = data.header;
-  const body = { mode, lang, job: lastJob, result: lastStatus.result, parts: lastMeta,
-    info: { product: h.product, product_desc: h.product_desc, order: h.order, user: h.user,
-            material_code: m.code, material_desc: m.desc, thickness: num(m.thickness) } };
+  const h = data.header;
+  const materials = (lastStatus.materials || []).filter(m => m.result && (m.state === 'done' || m.state === 'stopped'))
+    .map(m => ({ code: m.code, desc: m.desc, thickness: m.thickness, job: m.job, result: m.result }));
+  const body = { mode, lang, materials, parts: lastMeta,
+    info: { product: h.product, product_desc: h.product_desc, order: h.order, user: h.user } };
   const r = await fetch(kind === 'pdf' ? '/api/pdf' : '/api/production', { method: 'POST', body: JSON.stringify(body) });
   if (!r.ok) { alert(`${t('error')}: ${await r.text()}`); return; }
   download(fileNameOf(r, kind === 'pdf' ? 'plano.pdf' : 'producao.zip'), await r.blob());
@@ -532,6 +558,7 @@ function colourOf(id) {
 }
 const metaOf = id => lastMeta.find(m => m.id === id) || {};
 
+// The result: a headline for the whole plan, then one block per material.
 function drawResult() {
   const st = lastStatus, sum = document.getElementById('summary'), plan = document.getElementById('plan');
   const running = st?.state === 'running';
@@ -539,27 +566,47 @@ function drawResult() {
   document.getElementById('stop').disabled = !running;
   if (!st || st.state === 'idle') { sum.innerHTML = `<div class="empty">${esc(t('nothing_yet'))}</div>`; plan.hidden = true; return; }
   if (st.state === 'error') { sum.innerHTML = `<p class="warn"><b>${esc(t('error'))}:</b> ${esc(st.error)}</p>`; plan.hidden = true; return; }
-  const res = st.result;
-  if (!res) { sum.innerHTML = `<span class="badge run">${esc(t('running'))}</span>`; plan.hidden = true; return; }
-  const items = st.mode === 'linear' ? res.bars : res.sheets;
-  let html = `<div class="sum"><div><b>${items.length}</b> <span>${esc(t(st.mode === 'linear' ? 'bars' : 'sheets'))}</span></div>
-    <div><b>${fmt(useOf(st.mode, res) * 100)}%</b> <span>${esc(t('utilization'))}</span></div>
-    <div><span>${res.elapsed_ms} ${t('ms')}</span></div>`;
+  const mats = st.materials || [], withResult = mats.filter(m => m.result);
+  const count = withResult.reduce((a, m) => a + (st.mode === 'linear' ? m.result.bars.length : m.result.sheets.length), 0);
+  const allDone = !running && mats.length > 0 && mats.every(m => m.state === 'done' || m.state === 'stopped');
+  const allOk = allDone && mats.every(m => m.verified);
+  let html = `<div class="sum"><div><b>${mats.length}</b> <span>${esc(t('materials_n'))}</span></div>
+    <div><b>${count}</b> <span>${esc(t(st.mode === 'linear' ? 'bars' : 'sheets'))}</span></div>`;
   if (running) html += `<span class="badge run">${esc(t('running'))}</span>`;
-  else html += st.verified ? `<span class="badge ok">✓ ${esc(t('verified'))}</span>` : `<span class="badge bad">${esc(t('not_verified'))}</span>`;
+  else if (mats.length) html += allOk ? `<span class="badge ok">✓ ${esc(t('verified'))}</span>` : `<span class="badge bad">${esc(t('not_verified'))}</span>`;
   html += '</div>';
-  if (res.unplaced?.length) html += `<p class="warn"><b>${esc(t('left_out'))}:</b> ${res.unplaced.map(u => `${esc(u.part_id)} × ${u.quantity}`).join(', ')}</p>`;
-  for (const w of res.warnings || []) html += `<p class="warn">${esc(w)}</p>`;
-  if (!running && !st.verified) html += (st.problems || []).map(p => `<p class="warn">${esc(p)}</p>`).join('');
-  if (items.length) html += totals(st.mode, res);
-  if (!running && st.verified && items.length && lastJob) {
+  for (const ns of st.no_stock || []) html += `<p class="warn">${esc(t('no_stock', ns.code || t('no_code'), ns.parts.join(', ')))}</p>`;
+  if (allOk && withResult.length && lastJob) {
     html += `<div class="export"><button onclick="exportPlan('pdf')">${esc(t('export_pdf'))}</button>
       <button class="go" onclick="exportPlan('production')">${esc(t('export_production'))}</button>
       <small>${esc(t(st.mode === 'rectangular' ? 'export_hint_rect' : 'export_hint_linear'))}</small></div>`;
   }
   sum.innerHTML = html;
-  plan.hidden = !items.length;
-  plan.innerHTML = st.mode === 'linear' ? drawBars(res) : drawSheets(res);
+  plan.hidden = !mats.length;
+  plan.innerHTML = mats.map((m, i) => materialBlock(st.mode, m, i)).join('');
+}
+
+function materialBlock(m, mat, i) {
+  const res = mat.result, job = JSON.parse(JSON.stringify(mat.job || {}));
+  const title = `${esc(mat.code || t('no_code'))}${mat.desc ? ' · ' + esc(mat.desc) : ''}${mat.thickness ? ' · ' + fmt(mat.thickness) + ' mm' : ''}`;
+  let head = `<h2 style="font-size:14px;color:var(--ink);text-transform:none;letter-spacing:0">${title}</h2><div class="sum">`;
+  if (res) {
+    const items = m === 'linear' ? res.bars : res.sheets;
+    head += `<div><b>${items.length}</b> <span>${esc(t(m === 'linear' ? 'bars' : 'sheets'))}</span></div>
+      <div><b>${fmt(useOf(m, res) * 100)}%</b> <span>${esc(t('utilization'))}</span></div><div><span>${res.elapsed_ms} ${t('ms')}</span></div>`;
+  }
+  const running = mat.state === 'running' || mat.state === 'waiting';
+  head += running ? `<span class="badge run">${esc(t('mat_state_' + mat.state))}</span>` :
+    mat.state === 'error' ? `<span class="badge bad">${esc(t('error'))}</span>` :
+    mat.verified ? `<span class="badge ok">✓ ${esc(t('verified'))}</span>` : `<span class="badge bad">${esc(t('not_verified'))}</span>`;
+  head += '</div>';
+  if (mat.error) head += `<p class="warn"><b>${esc(t('error'))}:</b> ${esc(mat.error)}</p>`;
+  if (!res) return `<section>${head}</section>`;
+  if (res.unplaced?.length) head += `<p class="warn"><b>${esc(t('left_out'))}:</b> ${res.unplaced.map(u => `${esc(u.part_id)} × ${u.quantity}`).join(', ')}</p>`;
+  for (const w of res.warnings || []) head += `<p class="warn">${esc(w)}</p>`;
+  if (!running && !mat.verified) head += (mat.problems || []).map(p => `<p class="warn">${esc(p)}</p>`).join('');
+  head += totals(m, res);
+  return `<section>${head}${m === 'linear' ? drawBars(res, job.parts || []) : drawSheets(res, i)}</section>`;
 }
 
 // Use over the whole sheets or bars, as the report prints it.
@@ -589,8 +636,8 @@ const range = g => g.count > 1 ? `${g.first}–${g.first + g.count - 1} <small>(
 const barKey = b => b.stock_id + '|' + b.cuts.map(c => c.part_id).join('+');
 
 // Bars: parts are numbered by their place in the part list, as in the report.
-function drawBars(res) {
-  const s = lastJob?.settings || {}, parts = lastJob?.parts || [];
+function drawBars(res, parts) {
+  const s = lastJob?.settings || {};
   const numOf = id => parts.findIndex(p => p.id === id) + 1;
   const longest = Math.max(...res.bars.map(b => b.length));
   let html = grouped(res.bars, barKey).map(g => {
@@ -694,19 +741,19 @@ function partsTable(sh) {
     }).join('') + '</table>';
 }
 
-function drawSheets(res) {
+function drawSheets(res, mi) {
   const groups = grouped(res.sheets, sheetKey);
   const along = a => t(a === 'length' ? 'along_length' : 'along_width').toLowerCase();
   // The overview: every different plan, small. A click goes to the big one.
   let html = `<h2>${esc(t('overview'))}</h2><div class="thumbs">` + groups.map(g =>
-    `<div class="thumb" onclick="document.getElementById('item-${g.first}').scrollIntoView({behavior:'smooth'})">
+    `<div class="thumb" onclick="document.getElementById('item-${mi}-${g.first}').scrollIntoView({behavior:'smooth'})">
       ${g.count > 1 ? `<span class="n">${g.count}</span>` : ''}${sheetSvg(g.item, true)}
       <div class="cap"><span>${esc(t('sheet'))} ${g.count > 1 ? `${g.first}–${g.first + g.count - 1}` : g.first}</span><span>${fmt(sheetUse([g.item]) * 100)}%</span></div></div>`).join('') + '</div>';
   return html + groups.map(g => {
     const sh = g.item;
     const cuts = sh.cuts.map(c => `<li>${esc(t('stage'))} ${c.stage} · ${esc(along(c.along))} · ${esc(t('at'))} <b>${fmt(c.pos)}</b> (${esc(t('from'))} ${fmt(c.from)} ${esc(t('to'))} ${fmt(c.to)})</li>`).join('');
     const keep = sh.offcuts.filter(o => o.reusable).map(o => `${fmt(o.width)} × ${fmt(o.length)}`).join(', ') || t('none');
-    return `<div class="item" id="item-${g.first}"><h3>${esc(t('sheet'))} ${range(g)} <small>· ${esc(sh.stock_id)} · ${fmt(sh.width)} × ${fmt(sh.length)} mm · ${fmt(sheetUse([sh]) * 100)}% · ${esc(t('first'))}: ${esc(along(sh.first_cut))}</small></h3>
+    return `<div class="item" id="item-${mi}-${g.first}"><h3>${esc(t('sheet'))} ${range(g)} <small>· ${esc(sh.stock_id)} · ${fmt(sh.width)} × ${fmt(sh.length)} mm · ${fmt(sheetUse([sh]) * 100)}% · ${esc(t('first'))}: ${esc(along(sh.first_cut))}</small></h3>
       <div class="layout"><div class="draw">${sheetSvg(sh, false)}</div><div class="list">${partsTable(sh)}
       <p class="line">${esc(t('offcuts'))}: ${esc(keep)}</p>
       <details><summary>${esc(t('cuts'))} (${sh.cuts.length})</summary><ol>${cuts}</ol></details></div></div></div>`;

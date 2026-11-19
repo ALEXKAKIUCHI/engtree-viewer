@@ -23,10 +23,19 @@ type server struct {
 	status status
 }
 
+// status is the run as the page sees it: one entry per material.
 type status struct {
-	Run    int             `json:"run"`
-	State  string          `json:"state"` // idle, running, done, error
-	Mode   string          `json:"mode,omitempty"`
+	Run       int              `json:"run"`
+	State     string           `json:"state"` // idle, running, done, error
+	Mode      string           `json:"mode,omitempty"`
+	Materials []materialStatus `json:"materials"`
+	NoStock   []noStock        `json:"no_stock"` // materials whose parts found no stock
+	Error     string           `json:"error,omitempty"`
+}
+
+type materialStatus struct {
+	materialJob
+	State  string          `json:"state"`            // waiting, running, done, error, stopped
 	Result json.RawMessage `json:"result,omitempty"` // the best plan so far
 	// Problems is what the verifier says about the final plan. Empty
 	// means the plan passed.
@@ -35,7 +44,9 @@ type status struct {
 	Error    string   `json:"error,omitempty"`
 }
 
-func newServer() *server { return &server{status: status{State: "idle"}} }
+func newServer() *server {
+	return &server{status: status{State: "idle", Materials: []materialStatus{}, NoStock: []noStock{}}}
+}
 
 func (s *server) routes() http.Handler {
 	mux := http.NewServeMux()
@@ -67,6 +78,8 @@ func writeJSON(w http.ResponseWriter, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+// handleRun splits the job by material and plans the materials one after
+// another. A newer run stops an older one.
 func (s *server) handleRun(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Mode string          `json:"mode"`
@@ -81,6 +94,11 @@ func (s *server) handleRun(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unknown mode "+req.Mode, http.StatusBadRequest)
 		return
 	}
+	jobs, missing, err := splitByMaterial(req.Mode, req.Job)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s.mu.Lock()
 	if s.cancel != nil {
@@ -89,7 +107,17 @@ func (s *server) handleRun(w http.ResponseWriter, r *http.Request) {
 	s.run++
 	run := s.run
 	s.cancel = cancel
-	s.status = status{Run: run, State: "running", Mode: req.Mode}
+	st := status{Run: run, State: "running", Mode: req.Mode, Materials: []materialStatus{}, NoStock: missing}
+	if st.NoStock == nil {
+		st.NoStock = []noStock{}
+	}
+	for _, j := range jobs {
+		st.Materials = append(st.Materials, materialStatus{materialJob: j, State: "waiting", Problems: []string{}})
+	}
+	if len(jobs) == 0 {
+		st.State = "done"
+	}
+	s.status = st
 	s.mu.Unlock()
 
 	go func() {
@@ -102,17 +130,26 @@ func (s *server) handleRun(w http.ResponseWriter, r *http.Request) {
 				f(&s.status)
 			}
 		}
-		res, err := planner.Plan(ctx, req.Job, func(better json.RawMessage) {
-			set(func(st *status) { st.Result = better })
-		})
-		if err != nil {
-			set(func(st *status) { st.State, st.Error = "error", err.Error() })
-			return
+		for i, j := range jobs {
+			if ctx.Err() != nil {
+				set(func(st *status) { st.Materials[i].State = "stopped" })
+				continue
+			}
+			set(func(st *status) { st.Materials[i].State = "running" })
+			res, err := planner.Plan(ctx, j.Job, func(better json.RawMessage) {
+				set(func(st *status) { st.Materials[i].Result = better })
+			})
+			if err != nil {
+				set(func(st *status) { st.Materials[i].State, st.Materials[i].Error = "error", err.Error() })
+				continue
+			}
+			problems := planner.Verify(j.Job, res)
+			set(func(st *status) {
+				m := &st.Materials[i]
+				m.State, m.Result, m.Problems, m.Verified = "done", res, problems, len(problems) == 0
+			})
 		}
-		problems := planner.Verify(req.Job, res)
-		set(func(st *status) {
-			st.State, st.Result, st.Problems, st.Verified = "done", res, problems, len(problems) == 0
-		})
+		set(func(st *status) { st.State = "done" })
 	}()
 	writeJSON(w, map[string]int{"run": run})
 }
