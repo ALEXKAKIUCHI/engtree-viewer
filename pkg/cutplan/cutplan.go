@@ -1,58 +1,42 @@
-// Package cutplan gathers the cut planners that ship with EngTree and
-// plugs them into the program through the extension package:
+// Package cutplan plugs the cut planners of the cutplan module
+// (github.com/ALEXKAKIUCHI/engtree-viewer/cutplan) into the program
+// through the extension package:
 //
-//   - "linear": bars and tubes (package linear);
-//   - "rectangular": sheets on a panel saw (package rect).
+//   - "linear": bars and tubes;
+//   - "rectangular": sheets on a panel saw.
 //
-// Each planner takes its Job as JSON and answers with its Result as JSON.
+// The planners themselves live in that module and know nothing about
+// EngTree; this package is only the adapter.
 package cutplan
 
 import (
 	"context"
 	"encoding/json"
 
+	planners "github.com/ALEXKAKIUCHI/engtree-viewer/cutplan"
 	"github.com/ALEXKAKIUCHI/engtree-viewer/extension"
-	"github.com/ALEXKAKIUCHI/engtree-viewer/pkg/cutplan/linear"
-	"github.com/ALEXKAKIUCHI/engtree-viewer/pkg/cutplan/rect"
 )
 
 // IDs of the planners, as used in the API and in saved settings.
 const (
-	LinearID      = "linear"
-	RectangularID = "rectangular"
+	LinearID      = planners.LinearID
+	RectangularID = planners.RectangularID
 )
 
 // Register adds the built-in planners to the program. The app calls it
 // once when it starts.
 func Register() {
-	extension.RegisterCutPlanner(planner[linear.Job, linear.Result]{LinearID, "Linear (bars and tubes)", linear.Run})
-	extension.RegisterCutPlanner(planner[rect.Job, rect.Result]{RectangularID, "Rectangular (sheets)", rect.Run})
+	for _, p := range planners.Planners() {
+		extension.RegisterCutPlanner(adapter{p})
+	}
 }
 
-// planner wraps a typed Run function as an extension.CutPlanner.
-type planner[J, R any] struct {
-	id, label string
-	run       func(context.Context, J, func(R)) (R, error)
-}
+// adapter shows a planners.Planner as an extension.CutPlanner.
+type adapter struct{ p planners.Planner }
 
-func (p planner[J, R]) ID() string    { return p.id }
-func (p planner[J, R]) Label() string { return p.label }
+func (a adapter) ID() string    { return a.p.ID }
+func (a adapter) Label() string { return a.p.Label }
 
-func (p planner[J, R]) Plan(ctx context.Context, job json.RawMessage, progress func(json.RawMessage)) (json.RawMessage, error) {
-	var j J
-	if err := json.Unmarshal(job, &j); err != nil {
-		return nil, err
-	}
-	res, err := p.run(ctx, j, func(r R) {
-		if progress == nil {
-			return
-		}
-		if b, err := json.Marshal(r); err == nil {
-			progress(b)
-		}
-	})
-	if err != nil {
-		return nil, err
-	}
-	return json.Marshal(res)
+func (a adapter) Plan(ctx context.Context, job json.RawMessage, progress func(json.RawMessage)) (json.RawMessage, error) {
+	return a.p.Plan(ctx, job, progress)
 }

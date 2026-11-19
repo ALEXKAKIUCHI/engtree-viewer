@@ -36,6 +36,21 @@ type Columns struct {
 	Qty         string `json:"qty"`
 }
 
+// CutColumns says where the cut plan finds its data in the BOM (or in the
+// details sheet). Same rules as Columns: alternatives separated by "|",
+// case, accents and punctuation ignored, "#3" for the 3rd column. The
+// quantity comes from Columns.Qty.
+//
+// Material holds the material code, which must be the code of a material
+// in the material list (the "Cód. MP" column). Thickness and kind
+// (sheet or bar) come from that list, not from the BOM.
+type CutColumns struct {
+	Material string `json:"material"`
+	Length   string `json:"length"`
+	Width    string `json:"width"`
+	Unit     string `json:"unit"` // of Length and Width: mm (default), cm, m or in
+}
+
 // ListLayout is how one list looks after the user dragged its columns: the
 // order of the column keys and their widths in pixels.
 type ListLayout struct {
@@ -69,6 +84,9 @@ type Config struct {
 
 	ColumnLayout map[string]ListLayout `json:"column_layout,omitempty"`
 
+	// Machine values and report header last typed on the cut plan screen.
+	CutMachine *CutMachine `json:"cut_machine,omitempty"`
+
 	// ---- Shared settings (see SharedConfig) ----
 
 	// Folder with the BOM spreadsheets (.xlsx, .csv, .txt). Each spreadsheet
@@ -90,9 +108,14 @@ type Config struct {
 	DetailsPrefix string `json:"details_prefix"`
 	DetailsFile   string `json:"details_file"`
 
-	Columns       Columns    `json:"columns"`
-	HiddenColumns []string   `json:"hidden_columns"` // spreadsheet columns not shown in the tree
-	FileTypes     []FileType `json:"file_types"`
+	Columns    Columns    `json:"columns"`
+	CutColumns CutColumns `json:"cut_columns"`
+
+	// Optional folder where cut plan reports are saved, for companies that
+	// do not print. Without it the report is only shown.
+	CutReportsFolder string     `json:"cut_reports_folder"`
+	HiddenColumns    []string   `json:"hidden_columns"` // spreadsheet columns not shown in the tree
+	FileTypes        []FileType `json:"file_types"`
 
 	// Optional folder with attachments (photos, videos, customer documents).
 	// A sub-folder or a loose file belongs to a code when its name is the
@@ -120,6 +143,8 @@ func applyShared(dst *Config, src Config) {
 	dst.DetailsPrefix = src.DetailsPrefix
 	dst.DetailsFile = src.DetailsFile
 	dst.Columns = src.Columns
+	dst.CutColumns = src.CutColumns
+	dst.CutReportsFolder = src.CutReportsFolder
 	dst.HiddenColumns = src.HiddenColumns
 	dst.FileTypes = src.FileTypes
 	dst.RefFolder = src.RefFolder
@@ -136,11 +161,21 @@ func defaultColumns() Columns {
 	}
 }
 
+func defaultCutColumns() CutColumns {
+	return CutColumns{
+		Material: "COD MP|CODIGO MP|COD MATERIAL|CODIGO DO MATERIAL|CODIGO MATERIAL|MATERIAL CODE|MATERIAL",
+		Length:   "COMPRIMENTO|COMP|LENGTH",
+		Width:    "LARGURA|LARG|WIDTH",
+		Unit:     "mm",
+	}
+}
+
 func defaultConfig() Config {
 	return Config{
 		Mode:          ModeProduction,
 		NameSeparator: " - ",
 		Columns:       defaultColumns(),
+		CutColumns:    defaultCutColumns(),
 		FileTypes: []FileType{
 			{Name: "PDF", Extensions: []string{".pdf"}, Match: "prefix"},
 			{Name: "DXF", Extensions: []string{".dxf"}, Match: "exact"},
@@ -263,6 +298,19 @@ func normalizeConfig(c *Config) {
 	if strings.TrimSpace(c.Columns.Qty) == "" {
 		c.Columns.Qty = def.Qty
 	}
+	defCut := defaultCutColumns()
+	if strings.TrimSpace(c.CutColumns.Material) == "" {
+		c.CutColumns.Material = defCut.Material
+	}
+	if strings.TrimSpace(c.CutColumns.Length) == "" {
+		c.CutColumns.Length = defCut.Length
+	}
+	if strings.TrimSpace(c.CutColumns.Width) == "" {
+		c.CutColumns.Width = defCut.Width
+	}
+	if _, ok := unitToMM[c.CutColumns.Unit]; !ok {
+		c.CutColumns.Unit = defCut.Unit
+	}
 	if c.NameSeparator == "" {
 		c.NameSeparator = " - "
 	}
@@ -310,6 +358,7 @@ func normalizeConfig(c *Config) {
 	c.RefFolder = strings.TrimSpace(c.RefFolder)
 	c.ProductsFolder = strings.TrimSpace(c.ProductsFolder)
 	c.RevisionsFolder = strings.TrimSpace(c.RevisionsFolder)
+	c.CutReportsFolder = strings.TrimSpace(c.CutReportsFolder)
 	c.SharedConfig = strings.TrimSpace(c.SharedConfig)
 }
 
@@ -337,6 +386,9 @@ func saveConfig(in Config) Config {
 	}
 	if in.Requester == "" {
 		in.Requester = appCfg.Requester
+	}
+	if in.CutMachine == nil {
+		in.CutMachine = appCfg.CutMachine
 	}
 	writeShared := sharedAt.Active && !sharedAt.Offline && sharedAt.Editable && in.SharedConfig == sharedAt.Path
 	sharedPath := sharedAt.Path

@@ -5,7 +5,7 @@
 // It is a tool for trying the planners with real cases, not the final
 // screen: there is no BOM, no material list and nothing is saved on disk.
 //
-//	go run ./cmd/cuttest
+//	go run ./cmd/cuttest   (from the cutplan folder)
 package main
 
 import (
@@ -16,8 +16,6 @@ import (
 	"net/http"
 	"os/exec"
 	"runtime"
-
-	"github.com/ALEXKAKIUCHI/engtree-viewer/pkg/cutplan"
 )
 
 func main() {
@@ -25,7 +23,6 @@ func main() {
 	noBrowser := flag.Bool("no-browser", false, "do not open the browser")
 	flag.Parse()
 
-	cutplan.Register()
 	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", *port))
 	if err != nil {
 		log.Fatal(err)

@@ -148,6 +148,7 @@
 <div class="tabbar" id="tabbar">
   <div class="tab active" id="tab-btn-home" onclick="activateTab('home')" data-i18n="products"></div>
   <div class="tab" id="tab-btn-parts" onclick="activateTab('parts')" data-i18n="parts_tab"></div>
+  <div class="tab" id="tab-btn-cut" onclick="activateTab('cut')" data-i18n="cut_tab"></div>
 </div>
 
 <div id="workspace">
@@ -174,6 +175,7 @@
       <div class="muted" id="parts-status"></div>
     </div>
   </div>
+  <div class="pane" id="pane-cut"></div><!-- filled by /ui/cutplan.js -->
 </div>
 
 <!-- Settings -->
@@ -225,6 +227,17 @@
       <div class="field" style="grid-column: span 2"><label data-i18n="s_hidden"></label><input id="s-hidden" data-i18n-ph="s_hidden_ph"></div>
       <div class="field" style="grid-column: span 2"><label data-i18n="s_parts_cols"></label><input id="s-parts-cols" data-i18n-ph="s_parts_cols_ph">
         <div class="hint" data-i18n="s_parts_cols_hint"></div></div>
+    </div>
+    <h3 data-i18n="s_cut_h"></h3>
+    <div class="muted" style="margin-bottom:6px" data-i18n="s_cut_hint"></div>
+    <div class="grid2">
+      <div class="field"><label data-i18n="s_cut_material"></label><input id="s-cut-material"></div>
+      <div class="field"><label data-i18n="s_cut_unit"></label><select id="s-cut-unit">
+        <option value="mm">mm</option><option value="cm">cm</option><option value="m">m</option><option value="in">in</option></select></div>
+      <div class="field"><label data-i18n="s_cut_length"></label><input id="s-cut-length"></div>
+      <div class="field"><label data-i18n="s_cut_width"></label><input id="s-cut-width"></div>
+      <div class="field" style="grid-column: span 2"><label data-i18n="s_cut_reports"></label><input id="s-cut-reports">
+        <div class="hint" data-i18n="s_cut_reports_hint"></div></div>
     </div>
     <h3 data-i18n="s_ft_h"></h3>
     <div class="muted" style="margin-bottom:6px" data-i18n="s_ft_hint"></div>
@@ -987,6 +1000,7 @@ async function refreshList() {
 
 // ---------- tabs ----------
 function activateTab(id) {
+  if (id === 'cut') cutOpen();
   if (id === 'parts' && !partsLoaded) { partsLoaded = true; loadFacets().then(loadParts); }
   document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x.id === 'tab-btn-' + id));
   document.querySelectorAll('.pane').forEach(p => p.classList.toggle('active', p.id === 'pane-' + id));
@@ -1848,7 +1862,8 @@ function addFileTypeRow(ft) {
 
 // Fields that come from the shared file, locked unless this computer may edit it.
 const SHARED_FIELDS = ['s-bom-folder', 's-bom-prefix', 's-sep', 's-det-prefix', 's-det-file', 's-products-folder',
-  's-ref-folder', 's-rev-folder', 's-c-item', 's-c-code', 's-c-desc', 's-c-qty', 's-hidden', 's-parts-cols'];
+  's-ref-folder', 's-rev-folder', 's-c-item', 's-c-code', 's-c-desc', 's-c-qty', 's-hidden', 's-parts-cols',
+  's-cut-material', 's-cut-length', 's-cut-width', 's-cut-unit', 's-cut-reports'];
 
 function fillSettings(c, shared) {
   const v = (id, val) => document.getElementById(id).value = val || '';
@@ -1857,6 +1872,10 @@ function fillSettings(c, shared) {
   v('s-det-prefix', c.details_prefix); v('s-det-file', c.details_file);
   v('s-products-folder', c.products_folder); v('s-ref-folder', c.ref_folder); v('s-rev-folder', c.revisions_folder);
   v('s-c-item', c.columns.item); v('s-c-code', c.columns.code); v('s-c-desc', c.columns.description); v('s-c-qty', c.columns.qty);
+  const cc = c.cut_columns || {};
+  v('s-cut-material', cc.material); v('s-cut-length', cc.length); v('s-cut-width', cc.width);
+  document.getElementById('s-cut-unit').value = cc.unit || 'mm';
+  v('s-cut-reports', c.cut_reports_folder);
   v('s-hidden', (c.hidden_columns || []).join(', '));
   v('s-parts-cols', (c.parts_columns || []).join(', '));
   document.getElementById('ft-body').innerHTML = '';
@@ -1906,6 +1925,8 @@ async function saveSettings() {
     products_folder: g('s-products-folder').trim(), ref_folder: g('s-ref-folder').trim(),
     revisions_folder: g('s-rev-folder').trim(),
     columns: { item: g('s-c-item'), code: g('s-c-code'), description: g('s-c-desc'), qty: g('s-c-qty') },
+    cut_columns: { material: g('s-cut-material'), length: g('s-cut-length'), width: g('s-cut-width'), unit: g('s-cut-unit') },
+    cut_reports_folder: g('s-cut-reports').trim(),
     hidden_columns: split(g('s-hidden'), ','),
     parts_columns: split(g('s-parts-cols'), ','),
     file_types: [...document.querySelectorAll('#ft-body tr')].map(tr => ({
@@ -1947,5 +1968,6 @@ window.addEventListener('pagehide', () => navigator.sendBeacon('/api/closing'));
   setInterval(pollStatus, 4000);
 })();
 </script>
+<script src="/ui/cutplan.js"></script>
 </body>
 </html>
