@@ -10,9 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ALEXKAKIUCHI/engtree-viewer/pkg/cutplan"
-	"github.com/ALEXKAKIUCHI/engtree-viewer/pkg/cutplan/linear"
-	"github.com/ALEXKAKIUCHI/engtree-viewer/pkg/cutplan/rect"
+	"github.com/ALEXKAKIUCHI/engtree-viewer/cutplan/linear"
+	"github.com/ALEXKAKIUCHI/engtree-viewer/cutplan/rect"
 )
 
 func post(t *testing.T, h http.Handler, path, body string) *httptest.ResponseRecorder {
@@ -34,7 +33,6 @@ func getStatus(t *testing.T, h http.Handler) status {
 }
 
 func TestPageIsServed(t *testing.T) {
-	cutplan.Register()
 	rec := httptest.NewRecorder()
 	newServer().routes().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
 	if rec.Code != 200 || !bytes.Contains(rec.Body.Bytes(), []byte("<html")) {
@@ -43,7 +41,6 @@ func TestPageIsServed(t *testing.T) {
 }
 
 func TestLinearRun(t *testing.T) {
-	cutplan.Register()
 	s := newServer()
 	h := s.routes()
 	body := `{"mode":"linear","job":{"parts":[{"id":"A","length":2000,"quantity":5}],
@@ -63,7 +60,6 @@ func TestLinearRun(t *testing.T) {
 }
 
 func TestRectangularRun(t *testing.T) {
-	cutplan.Register()
 	s := newServer()
 	h := s.routes()
 	body := `{"mode":"rectangular","job":{"parts":[{"id":"A","length":1000,"width":500,"quantity":4}],
@@ -83,7 +79,6 @@ func TestRectangularRun(t *testing.T) {
 }
 
 func TestBadRequests(t *testing.T) {
-	cutplan.Register()
 	s := newServer()
 	h := s.routes()
 	if rec := post(t, h, "/api/run", `{"mode":"spiral","job":{}}`); rec.Code != 400 {
@@ -100,7 +95,6 @@ func TestBadRequests(t *testing.T) {
 }
 
 func TestStopEndsTheRunWithAPlan(t *testing.T) {
-	cutplan.Register()
 	s := newServer()
 	h := s.routes()
 	// Long enough to still be running when the stop arrives.
@@ -125,7 +119,6 @@ func TestStopEndsTheRunWithAPlan(t *testing.T) {
 }
 
 func TestGibenExport(t *testing.T) {
-	cutplan.Register()
 	s := newServer()
 	h := s.routes()
 	job := `{"parts":[{"id":"Side","length":1705,"width":785,"quantity":3,"can_rotate":true},

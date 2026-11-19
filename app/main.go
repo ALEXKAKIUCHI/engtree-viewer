@@ -28,7 +28,7 @@ const (
 	repoURL      = "https://github.com/ALEXKAKIUCHI/engtree-viewer"
 )
 
-//go:embed ui/index.html assets
+//go:embed ui assets
 var uiFiles embed.FS
 
 var (
@@ -346,6 +346,7 @@ func Run() {
 		_, _ = w.Write(data)
 	})
 	mux.Handle("/assets/", http.FileServer(http.FS(uiFiles)))
+	mux.Handle("/ui/", http.FileServer(http.FS(uiFiles)))
 
 	mux.HandleFunc("/api/version", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{"version": appVersion, "date": appBuildDate, "repo": repoURL,
@@ -492,6 +493,8 @@ func Run() {
 			"online":        online,
 		})
 	})
+
+	cutRoutes(mux)
 
 	mux.HandleFunc("/api/item_files", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, findAllFiles(getConfig(), r.URL.Query().Get("code"), getKnownCodes()))

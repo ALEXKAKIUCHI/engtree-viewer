@@ -5,4 +5,4 @@
 *.png binary
 
 # Saw files must keep their CRLF line ends.
-pkg/cutplan/giben/testdata/* -text
+cutplan/giben/testdata/* -text

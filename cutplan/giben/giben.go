@@ -23,7 +23,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ALEXKAKIUCHI/engtree-viewer/pkg/cutplan/rect"
+	"github.com/ALEXKAKIUCHI/engtree-viewer/cutplan/rect"
 )
 
 // Columns that were the same in every reference file. Their

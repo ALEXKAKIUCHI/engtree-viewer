@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+- New Cut plan tab: product and quantity, a conference table where sizes,
+  quantities, rotation and edge banding can be corrected for this plan only,
+  the material list editor, machine values remembered on this computer, one
+  calculation per material (every result checked by the verifier), the
+  sheets drawn and one line per bar
+- Cut plan report: an A4 PDF in black and white, made for any office
+  printer (header with the product, order, user, plan i/n and sheet code;
+  boxes for material, use, loss and saw plan; the drawing with numbered
+  parts and dotted offcuts; the part list; file location and page in the
+  footer), and a summary spreadsheet. Both can also be saved in a
+  reports folder set in Settings. The PDF uses go-pdf/fpdf (MIT), the first
+  outside package of the program
+- Cut plan, first part: settings for the BOM columns the plan reads
+  (material code, length, width, unit; "Cód. MP" is recognised by default),
+  a material list kept on this computer, and the parts of a product to cut,
+  with quantities multiplied down the tree and checked against the list
+  (unknown material, missing size, part larger than the sheet or bar)
+- The cut planners (`linear`, `rect`, `giben`) and the `cuttest` screen moved
+  to their own Go module in `cutplan/`, which depends only on the standard
+  library. `pkg/cutplan` is now just the adapter that registers them in
+  `extension`
 - New `pkg/cutplan/giben`: a rectangular plan as the .AC and .AD files a
   Giben panel saw (GVision) loads. Tested by rebuilding two real exports
   byte for byte. The cut test screen

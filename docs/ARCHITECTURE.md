@@ -1,6 +1,7 @@
 # Architecture
 
-EngTree Viewer is one Go executable (standard library only) plus a single-page UI embedded in it.
+EngTree Viewer is one Go executable plus a single-page UI embedded in it. It uses the standard library
+and one outside package, [go-pdf/fpdf](https://github.com/go-pdf/fpdf) (MIT), for the cut plan report.
 
 ```
 Edge/Chrome --app window  <--HTTP 127.0.0.1-->  EngTreeViewer.exe  --reads-->  BOM + file folders
@@ -15,12 +16,12 @@ ui/index.html                                   Go server
 
 ```
 cmd/engtree/      the Windows executable (and the icon resource)
-cmd/cuttest/      a test screen for the cut planners (go run ./cmd/cuttest)
 app/              the program itself: app.Run(), the server, the UI
 extension/        where cut planners plug in
 pkg/geom/         points, rings, a ring with its holes (mm)
 pkg/dxfgeom/      DXF -> segments and closed contours
-pkg/cutplan/      the built-in cut planners: linear/ (bars) and rect/ (sheets)
+pkg/cutplan/      plugs the planners of ./cutplan into extension
+cutplan/          its own Go module: the cut planners (see below)
 tools/makeicon/   builds the .syso icon resource
 ```
 
@@ -45,6 +46,14 @@ modules can import them.
 | `app/files.go` | Directory cache, file-type index (exact / prefix keys), attachments, ZIP packages |
 | `app/parts.go` | Parts index built from all BOMs (per-BOM cache by modification time, read in parallel), Parts tab routes |
 | `app/revisions.go` | Revision requests: one JSON file each in a shared folder, status, export |
+| `app/materials.go` | The material list (sheets and bars, code and alternative code, thickness, grain, size, offcuts), kept in `materials.json` in the data folder |
+| `app/cutlines.go` | The parts of a product that go to the cut plan: BOM lines with a material code, quantities multiplied down the tree, matched to the material list |
+| `app/cutjobs.go` | Conference lines to one planner job per material: edge banding off, equal parts joined, rotation from the grain, offcuts first |
+| `app/cutrun.go` | Runs the jobs of a plan one after another through the registered planners, verifies each result, remembers the machine values |
+| `app/cutreport.go` | The A4 black-and-white PDF report (one page per sheet layout, one per bar material) and the summary spreadsheet |
+| `app/xlsxwrite.go` | Minimal .xlsx writer (one sheet), read back by `xlsx.go` |
+| `app/cutroutes.go` | Cut plan API: `/api/materials`, `/api/cut_lines`, `/api/cut_machine`, `/api/cut_plan` (start, status, `stop`, `pdf`, `xlsx`) |
+| `app/ui/cutplan.js` | The Cut plan tab: conference table, material list, machine values, results |
 | `app/cad.go` | The viewer's IGES reader, and the DXF view built on `pkg/dxfgeom` |
 | `app/taskbar_windows.go` | Own taskbar identity/icon for the browser window |
 | `app/ui/index.html` | The whole interface |
@@ -53,11 +62,22 @@ modules can import them.
 | `pkg/dxfgeom/contours.go` | Segments joined into closed rings, outlines and holes told apart |
 | `pkg/dxfgeom/curve.go` | The curves as drawn (line, arc, ellipse, spline), kept beside the flat segments |
 | `extension/extension.go` | The `CutPlanner` interface and its registry |
-| `pkg/cutplan/cutplan.go` | Registers the built-in planners (`linear`, `rectangular`); jobs and results travel as JSON |
-| `pkg/cutplan/linear/` | Bars and tubes: `types.go` (job, result), `verify.go` (the independent verifier), `plan.go` (the planner) |
-| `pkg/cutplan/rect/` | Sheets on a panel saw, edge-to-edge cuts in 2 or 3 stages: same three files |
-| `pkg/cutplan/giben/` | A rectangular plan as the .AC and .AD files of a Giben saw (GVision); format in `docs/GIBEN.md` |
-| `cmd/cuttest/` | Local test page: type parts and stock, calculate, see the bars or sheets drawn and the cut list |
+| `pkg/cutplan/cutplan.go` | The adapter: registers the planners of the `cutplan` module (`linear`, `rectangular`) as `extension.CutPlanner` |
+
+## The cutplan module
+
+`cutplan/` has its own `go.mod` (`github.com/ALEXKAKIUCHI/engtree-viewer/cutplan`)
+and depends only on the standard library: it knows nothing about the BOM,
+the screen or `extension`. The main `go.mod` points at it with a `replace`.
+Its tests run from inside the folder (`cd cutplan && go test ./...`).
+
+| File | Role |
+|---|---|
+| `cutplan/cutplan.go` | Lists the planners (`Planners`, `ByID`); jobs, results and verification travel as JSON |
+| `cutplan/linear/` | Bars and tubes: `types.go` (job, result), `verify.go` (the independent verifier), `plan.go` (the planner) |
+| `cutplan/rect/` | Sheets on a panel saw, edge-to-edge cuts in 2 or 3 stages: same three files |
+| `cutplan/giben/` | A rectangular plan as the .AC and .AD files of a Giben saw (GVision); format in `cutplan/GIBEN.md` |
+| `cutplan/cmd/cuttest/` | Local test page: type parts and stock, calculate, see the bars or sheets drawn and the cut list |
 
 Each planner has a verifier written before it and sharing no code with it.
 Every plan made in the tests, and every plan shown by `cmd/cuttest`, goes

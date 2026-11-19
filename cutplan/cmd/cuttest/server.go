@@ -12,11 +12,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ALEXKAKIUCHI/engtree-viewer/extension"
-	"github.com/ALEXKAKIUCHI/engtree-viewer/pkg/cutplan"
-	"github.com/ALEXKAKIUCHI/engtree-viewer/pkg/cutplan/giben"
-	"github.com/ALEXKAKIUCHI/engtree-viewer/pkg/cutplan/linear"
-	"github.com/ALEXKAKIUCHI/engtree-viewer/pkg/cutplan/rect"
+	"github.com/ALEXKAKIUCHI/engtree-viewer/cutplan"
+	"github.com/ALEXKAKIUCHI/engtree-viewer/cutplan/giben"
+	"github.com/ALEXKAKIUCHI/engtree-viewer/cutplan/rect"
 )
 
 //go:embed page.html
@@ -81,7 +79,7 @@ func (s *server) handleRun(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "POST {mode, job}", http.StatusBadRequest)
 		return
 	}
-	planner, ok := extension.CutPlannerByID(req.Mode)
+	planner, ok := cutplan.ByID(req.Mode)
 	if !ok {
 		http.Error(w, "unknown mode "+req.Mode, http.StatusBadRequest)
 		return
@@ -114,7 +112,7 @@ func (s *server) handleRun(w http.ResponseWriter, r *http.Request) {
 			set(func(st *status) { st.State, st.Error = "error", err.Error() })
 			return
 		}
-		problems := verify(req.Mode, req.Job, res)
+		problems := planner.Verify(req.Job, res)
 		set(func(st *status) {
 			st.State, st.Result, st.Problems, st.Verified = "done", res, problems, len(problems) == 0
 		})
@@ -177,39 +175,6 @@ func handleGiben(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/zip")
 	w.Header().Set("Content-Disposition", `attachment; filename="giben_`+base+`.zip"`)
 	_, _ = w.Write(buf.Bytes())
-}
-
-// verify runs the independent verifier of the mode over the final plan.
-func verify(mode string, job, res json.RawMessage) []string {
-	var problems []string
-	var err error
-	switch mode {
-	case cutplan.LinearID:
-		var j linear.Job
-		var r linear.Result
-		if err = json.Unmarshal(job, &j); err == nil {
-			if err = json.Unmarshal(res, &r); err == nil {
-				problems = linear.Verify(j, r)
-			}
-		}
-	case cutplan.RectangularID:
-		var j rect.Job
-		var r rect.Result
-		if err = json.Unmarshal(job, &j); err == nil {
-			if err = json.Unmarshal(res, &r); err == nil {
-				problems = rect.Verify(j, r)
-			}
-		}
-	default:
-		return []string{"no verifier for mode " + mode}
-	}
-	if err != nil {
-		return []string{err.Error()}
-	}
-	if problems == nil {
-		problems = []string{}
-	}
-	return problems
 }
 
 // waitDone is used by the tests: it polls like the page does.
