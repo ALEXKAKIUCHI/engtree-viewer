@@ -1,20 +1,14 @@
 package main
 
 import (
-	"archive/zip"
-	"bytes"
 	"context"
 	_ "embed"
 	"encoding/json"
-	"fmt"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/ALEXKAKIUCHI/engtree-viewer/cutplan"
-	"github.com/ALEXKAKIUCHI/engtree-viewer/cutplan/giben"
-	"github.com/ALEXKAKIUCHI/engtree-viewer/cutplan/rect"
 )
 
 //go:embed page.html
@@ -55,7 +49,9 @@ func (s *server) routes() http.Handler {
 	})
 	mux.HandleFunc("/api/run", s.handleRun)
 	mux.HandleFunc("/api/stop", s.handleStop)
-	mux.HandleFunc("/api/giben", handleGiben)
+	mux.HandleFunc("/api/pdf", handlePDF)
+	mux.HandleFunc("/api/production", handleProduction)
+	mux.HandleFunc("/api/ping", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) })
 	mux.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
 		st := s.status
@@ -127,54 +123,6 @@ func (s *server) handleStop(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Unlock()
 	writeJSON(w, map[string]bool{"ok": true})
-}
-
-// handleGiben turns a rectangular plan into the .AC and .AD files of a
-// Giben saw and sends them in a ZIP. Part codes follow the order of the
-// parts; labels are their codes.
-func handleGiben(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Job       rect.Job    `json:"job"`
-		Result    rect.Result `json:"result"`
-		Material  string      `json:"material"`
-		Thickness float64     `json:"thickness"`
-		Project   string      `json:"project"`
-	}
-	if r.Method != http.MethodPost || json.NewDecoder(r.Body).Decode(&req) != nil {
-		http.Error(w, "POST {job, result, material, thickness, project}", http.StatusBadRequest)
-		return
-	}
-	ac, ad, err := giben.Write(req.Job, req.Result, giben.Export{
-		Material: req.Material, Thickness: req.Thickness, ProjectCode: req.Project,
-		Description: req.Project, Date: time.Now(),
-	})
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
-		return
-	}
-	base := fmt.Sprintf("%s_%.1f", strings.Join(strings.Fields(req.Material), "_"), req.Thickness)
-	var buf bytes.Buffer
-	zw := zip.NewWriter(&buf)
-	for _, f := range []struct {
-		ext  string
-		data []byte
-	}{{".AC", ac}, {".AD", ad}} {
-		fw, err := zw.Create(base + f.ext)
-		if err == nil {
-			_, err = fw.Write(f.data)
-		}
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-	}
-	if err := zw.Close(); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "application/zip")
-	w.Header().Set("Content-Disposition", `attachment; filename="giben_`+base+`.zip"`)
-	_, _ = w.Write(buf.Bytes())
 }
 
 // waitDone is used by the tests: it polls like the page does.

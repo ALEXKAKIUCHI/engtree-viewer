@@ -118,7 +118,7 @@ func TestStopEndsTheRunWithAPlan(t *testing.T) {
 	}
 }
 
-func TestGibenExport(t *testing.T) {
+func TestExports(t *testing.T) {
 	s := newServer()
 	h := s.routes()
 	job := `{"parts":[{"id":"Side","length":1705,"width":785,"quantity":3,"can_rotate":true},
@@ -132,12 +132,35 @@ func TestGibenExport(t *testing.T) {
 	if !st.Verified {
 		t.Fatalf("status: %+v", st)
 	}
-	rec := post(t, h, "/api/giben", `{"job":`+job+`,"result":`+string(st.Result)+`,"material":"MDF BRANCO 15MM","thickness":15,"project":"P1"}`)
+	body := `{"mode":"rectangular","lang":"pt","job":` + job + `,"result":` + string(st.Result) + `,
+	  "info":{"product":"P1","product_desc":"MESA","material_code":"100234","material_desc":"MDF BRANCO 15MM","thickness":15},
+	  "parts":[{"id":"Side","desc":"LATERAL","project":"OBRA-7"}]}`
+
+	rec := post(t, h, "/api/pdf", body)
+	if rec.Code != 200 || rec.Header().Get("Content-Type") != "application/pdf" || !bytes.HasPrefix(rec.Body.Bytes(), []byte("%PDF-")) {
+		t.Fatalf("pdf: %d %s", rec.Code, rec.Body)
+	}
+
+	rec = post(t, h, "/api/production", body)
 	if rec.Code != 200 || rec.Header().Get("Content-Type") != "application/zip" {
-		t.Fatalf("giben: %d %s", rec.Code, rec.Body)
+		t.Fatalf("production: %d %s", rec.Code, rec.Body)
 	}
 	zr, err := zip.NewReader(bytes.NewReader(rec.Body.Bytes()), int64(rec.Body.Len()))
-	if err != nil || len(zr.File) != 2 || zr.File[0].Name != "MDF_BRANCO_15MM_15.0.AC" || zr.File[1].Name != "MDF_BRANCO_15MM_15.0.AD" {
+	if err != nil || len(zr.File) != 3 {
 		t.Fatalf("zip: %v %v", err, zr)
+	}
+	names := []string{zr.File[0].Name, zr.File[1].Name, zr.File[2].Name}
+	if !strings.HasPrefix(names[0], "Plano de corte - P1 - MESA - ") || !strings.HasSuffix(names[0], ".pdf") ||
+		names[1] != "MDF_BRANCO_15MM_15.0.AC" || names[2] != "MDF_BRANCO_15MM_15.0.AD" {
+		t.Errorf("files: %q", names)
+	}
+
+	// A plan the verifier refuses is not exported.
+	bad := strings.Replace(body, string(st.Result), `{"sheets":[{"stock_id":"MDF","length":2750,"width":1850,"placements":[{"part_id":"Side","instance":1,"x":0,"y":0}]}]}`, 1)
+	if rec := post(t, h, "/api/production", bad); rec.Code != http.StatusUnprocessableEntity {
+		t.Errorf("a wrong plan was exported: %d", rec.Code)
+	}
+	if rec := post(t, h, "/api/pdf", `{}`); rec.Code != http.StatusBadRequest {
+		t.Errorf("empty request: %d", rec.Code)
 	}
 }
