@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/ALEXKAKIUCHI/engtree-viewer/pkg/cutplan"
+	"github.com/ALEXKAKIUCHI/engtree-viewer/pkg/window"
 )
 
 // Shown in the About box. Bump both on every release and add a line to
@@ -285,42 +286,12 @@ func writeJSON(w http.ResponseWriter, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-func openWithSystem(target string) error {
-	switch runtime.GOOS {
-	case "windows":
-		return exec.Command("rundll32", "url.dll,FileProtocolHandler", target).Start()
-	case "darwin":
-		return exec.Command("open", target).Start()
-	default:
-		return exec.Command("xdg-open", target).Start()
-	}
-}
-
-// launchWindow opens the UI in Edge or Chrome "app mode" (no address bar),
-// falling back to the default browser.
-func launchWindow(url string) {
-	if runtime.GOOS == "windows" {
-		local := os.Getenv("LOCALAPPDATA")
-		for _, exe := range []string{
-			`C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`,
-			`C:\Program Files\Microsoft\Edge\Application\msedge.exe`,
-			`C:\Program Files\Google\Chrome\Application\chrome.exe`,
-			`C:\Program Files (x86)\Google\Chrome\Application\chrome.exe`,
-			filepath.Join(local, `Google\Chrome\Application\chrome.exe`),
-		} {
-			if _, err := os.Stat(exe); err == nil {
-				_ = exec.Command(exe, "--app="+url, "--window-size=1400,900").Start()
-				return
-			}
-		}
-	}
-	_ = openWithSystem(url)
-}
+func openWithSystem(target string) error { return window.OpenWithSystem(target) }
 
 // ---- Main ----
 
 // Run starts the local server and opens the window. It returns when the
-// window is closed (see watchForWindowClose).
+// window is closed (see the window package).
 func Run() {
 	port := flag.Int("port", 0, "fixed local port (default: random free port)")
 	noWindow := flag.Bool("no-window", false, "do not open a window and do not exit when idle (for development)")
@@ -603,10 +574,9 @@ func Run() {
 		writeJSON(w, map[string]bool{"ok": true})
 	})
 
-	mux.HandleFunc("/api/closing", func(w http.ResponseWriter, r *http.Request) {
-		markClosing()
-		w.WriteHeader(http.StatusNoContent)
-	})
+	// Closing the window sends /api/closing; the window package then stops
+	// the program (see there).
+	life := window.NewLife("/api/closing")
 
 	listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", *port))
 	if err != nil {
@@ -617,55 +587,9 @@ func Run() {
 	if *noWindow {
 		fmt.Println("EngTree Viewer running at", url)
 	} else {
-		go launchWindow(url)
+		go window.Launch(url)
 		startTaskbarIdentity()
-		go watchForWindowClose()
+		go life.Watch()
 	}
-	_ = http.Serve(listener, guard(trackActivity(mux)))
-}
-
-// ---- Exit when the window closes ----
-//
-// The window is a separate browser process, so closing it does not stop
-// this server. The page sends /api/closing on unload; the server exits a few
-// seconds later unless the page comes back (a reload). As a safety net it
-// also exits after 3 minutes without any request (the page polls /api/status
-// every few seconds while open, even minimized).
-
-var (
-	lifeMu      sync.Mutex
-	lastSeen    = time.Now()
-	closingAt   time.Time
-	idleTimeout = 3 * time.Minute
-	closeGrace  = 5 * time.Second
-)
-
-func trackActivity(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/closing" {
-			lifeMu.Lock()
-			lastSeen = time.Now()
-			closingAt = time.Time{}
-			lifeMu.Unlock()
-		}
-		next.ServeHTTP(w, r)
-	})
-}
-
-func markClosing() {
-	lifeMu.Lock()
-	closingAt = time.Now()
-	lifeMu.Unlock()
-}
-
-func watchForWindowClose() {
-	for range time.Tick(time.Second) {
-		lifeMu.Lock()
-		closing := !closingAt.IsZero() && time.Since(closingAt) > closeGrace
-		idle := time.Since(lastSeen) > idleTimeout
-		lifeMu.Unlock()
-		if closing || idle {
-			os.Exit(0)
-		}
-	}
+	_ = http.Serve(listener, guard(life.Track(mux)))
 }
