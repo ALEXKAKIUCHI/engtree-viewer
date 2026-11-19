@@ -51,6 +51,7 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("/api/stop", s.handleStop)
 	mux.HandleFunc("/api/pdf", handlePDF)
 	mux.HandleFunc("/api/production", handleProduction)
+	mux.HandleFunc("/api/version", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, map[string]string{"version": version}) })
 	mux.HandleFunc("/api/ping", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) })
 	mux.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()

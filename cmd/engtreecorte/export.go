@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"mime"
 	"net/http"
 	"strings"
 	"time"
@@ -162,7 +163,7 @@ func handlePDF(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/pdf")
-	w.Header().Set("Content-Disposition", `attachment; filename="`+files[0].name+`"`)
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": files[0].name}))
 	_, _ = w.Write(files[0].data)
 }
 
@@ -195,6 +196,6 @@ func handleProduction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/zip")
-	w.Header().Set("Content-Disposition", `attachment; filename="`+base+` - producao.zip"`)
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": base + " - producao.zip"}))
 	_, _ = w.Write(buf.Bytes())
 }

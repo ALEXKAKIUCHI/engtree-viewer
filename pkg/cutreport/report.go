@@ -600,13 +600,18 @@ func (r *report) dotted(x, y, w, h float64) {
 	if w <= 0 || h <= 0 {
 		return
 	}
-	const step = 1.3
-	pdf.SetFillColor(85, 85, 85)
+	// Each row of dots is one dashed line: tiny dashes far apart. A dot
+	// drawn one by one would make the file a hundred times bigger.
+	const step, dot = 1.3, 0.32
+	pdf.SetDrawColor(85, 85, 85)
+	pdf.SetLineWidth(dot)
+	pdf.SetDashPattern([]float64{dot, step - dot}, 0)
 	pdf.ClipRect(x, y, w, h, false)
-	for dy := step / 2; dy < h; dy += step {
-		for dx := step / 2; dx < w; dx += step {
-			pdf.Circle(x+dx, y+dy, 0.17, "F")
-		}
+	// Dashes start at a multiple of step from the page edge, so neighbouring
+	// areas line up.
+	x0 := math.Floor(x/step) * step
+	for dy := math.Floor(y/step)*step + step/2; dy < y+h; dy += step {
+		pdf.Line(x0, dy, x+w, dy)
 	}
 	pdf.ClipEnd()
 	pdf.SetDrawColor(0, 0, 0)
@@ -864,9 +869,13 @@ func FileName(h Header) string {
 	return safeFileName(name + " - " + created.Format("2006-01-02 1504"))
 }
 
-// safeFileName drops the characters Windows does not allow in names.
+// safeFileName drops the characters Windows does not allow in names, and
+// the accents: some browsers refuse to save a download whose name has them.
 func safeFileName(s string) string {
 	return strings.Map(func(r rune) rune {
+		if plain, ok := unaccented[r]; ok {
+			return plain
+		}
 		if strings.ContainsRune(`<>:"/\|?*`, r) || r < 32 {
 			return '_'
 		}
@@ -909,3 +918,18 @@ func BarsUse(bars []linear.Bar) float64 {
 	}
 	return used / total
 }
+
+// unaccented gives the plain letter of the accented ones used in
+// Portuguese and Spanish.
+var unaccented = func() map[rune]rune {
+	m := map[rune]rune{}
+	for plain, accented := range map[rune]string{
+		'a': "áàâãäå", 'e': "éèêë", 'i': "íìîï", 'o': "óòôõö", 'u': "úùûü", 'c': "ç", 'n': "ñ",
+		'A': "ÁÀÂÃÄÅ", 'E': "ÉÈÊË", 'I': "ÍÌÎÏ", 'O': "ÓÒÔÕÖ", 'U': "ÚÙÛÜ", 'C': "Ç", 'N': "Ñ",
+	} {
+		for _, r := range accented {
+			m[r] = plain
+		}
+	}
+	return m
+}()

@@ -3,6 +3,7 @@ package app
 import (
 	"encoding/json"
 	"io"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -61,7 +62,7 @@ func cutRoutes(mux *http.ServeMux) {
 			}
 		}
 		w.Header().Set("Content-Type", "application/pdf")
-		w.Header().Set("Content-Disposition", `inline; filename="`+strings.ReplaceAll(name, `"`, "")+`"`)
+		w.Header().Set("Content-Disposition", mime.FormatMediaType("inline", map[string]string{"filename": name}))
 		_, _ = w.Write(b)
 	})
 
@@ -84,7 +85,7 @@ func cutRoutes(mux *http.ServeMux) {
 			}
 		}
 		w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-		w.Header().Set("Content-Disposition", `attachment; filename="`+strings.ReplaceAll(name, `"`, "")+`"`)
+		attachment(w, name)
 		_, _ = w.Write(b)
 	})
 
@@ -117,7 +118,7 @@ func cutRoutes(mux *http.ServeMux) {
 		rows := materialRows(l)
 		if r.URL.Query().Get("format") == "csv" {
 			w.Header().Set("Content-Type", "text/csv; charset=utf-8")
-			w.Header().Set("Content-Disposition", `attachment; filename="`+name+`.csv"`)
+			attachment(w, name+".csv")
 			_, _ = w.Write(materialsCSV(rows))
 			return
 		}
@@ -127,7 +128,7 @@ func cutRoutes(mux *http.ServeMux) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-		w.Header().Set("Content-Disposition", `attachment; filename="`+name+`.xlsx"`)
+		attachment(w, name+".xlsx")
 		_, _ = w.Write(b)
 	})
 

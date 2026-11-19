@@ -1,6 +1,7 @@
 name: Release
 
-# Builds the Windows executable and publishes it on a new tag, so the file
+# Builds the Windows executables (EngTree Viewer and EngTree Corte) and
+# publishes them on a new tag, so the file
 # people download is built from the code in this repository, not on a laptop.
 #
 #   git tag v0.2.0 && git push origin v0.2.0
@@ -24,14 +25,21 @@ jobs:
       - name: Build EngTreeViewer.exe
         run: GOOS=windows GOARCH=amd64 go build -ldflags="-s -w -H=windowsgui" -o EngTreeViewer.exe ./cmd/engtree
 
+      - name: Build EngTreeCorte.exe
+        run: GOOS=windows GOARCH=amd64 go build -ldflags="-s -w -H=windowsgui -X main.version=${GITHUB_REF_NAME}" -o EngTreeCorte.exe ./cmd/engtreecorte
+
+      # Each zip is put together in its own folder under dist/ (pkg/ holds
+      # source code and must not end up in a zip).
       - name: Package
         run: |
-          mkdir -p pkg
-          cp EngTreeViewer.exe README.md README.pt-BR.md LICENSE pkg/
-          cp docs/engtree.example.json pkg/
-          cp docs/GUIA.md docs/GUIDE.md pkg/
-          (cd pkg && zip -qr "../EngTreeViewer-${GITHUB_REF_NAME}-windows-x64.zip" .)
-          sha256sum EngTreeViewer.exe *.zip > SHA256SUMS.txt
+          mkdir -p dist/viewer dist/corte
+          cp EngTreeViewer.exe README.md README.pt-BR.md LICENSE dist/viewer/
+          cp docs/engtree.example.json dist/viewer/
+          cp docs/GUIA.md docs/GUIDE.md dist/viewer/
+          (cd dist/viewer && zip -qr "../../EngTreeViewer-${GITHUB_REF_NAME}-windows-x64.zip" .)
+          cp EngTreeCorte.exe LICENSE dist/corte/
+          (cd dist/corte && zip -qr "../../EngTreeCorte-${GITHUB_REF_NAME}-windows-x64.zip" .)
+          sha256sum EngTreeViewer.exe EngTreeCorte.exe *.zip > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
       - name: Release notes from the changelog
@@ -47,10 +55,10 @@ jobs:
           # GitHub website: then only the files are missing.
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" \
-              EngTreeViewer.exe *.zip SHA256SUMS.txt --clobber
+              EngTreeViewer.exe EngTreeCorte.exe *.zip SHA256SUMS.txt --clobber
           else
             gh release create "$GITHUB_REF_NAME" \
               --title "EngTree Viewer $GITHUB_REF_NAME" \
               --notes-file notes.md \
-              EngTreeViewer.exe *.zip SHA256SUMS.txt
+              EngTreeViewer.exe EngTreeCorte.exe *.zip SHA256SUMS.txt
           fi

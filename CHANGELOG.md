@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- New EngTree Corte (`EngTreeCorte.exe`): the cut planner on its own, to
+  take to the shop floor before it is part of EngTree. It grew out of the
+  cut test screen and adds: the EngTree colours, dark or light; a "can
+  rotate" button the size of its cell, with all / none; swapping length and
+  width per part or for all; description and project per part; the plan
+  data (product, order, user, material); opening and saving a plan as a
+  file; "Send for analysis", a file with everything needed to reproduce a
+  case; drawings standing up and numbered as in the report; "Export PDF
+  report" and "Export for production" (the PDF and the Giben .AC/.AD files
+  in one ZIP). Exports are checked by the verifier first
+- The PDF report and the window handling are now packages shared by EngTree
+  and EngTree Corte (`pkg/cutreport`, `pkg/window`). The report is about a
+  hundred times smaller (the dotted areas were drawn dot by dot), and file
+  names lose their accents, which some browsers refuse to save
+- The release zip no longer carries the source folder `pkg/` by mistake
 - Material list import and export: .xlsx or .csv (semicolons and decimal
   commas, as Excel in Portuguese writes them), and a blank template. An
   import merges by code (a known code is updated, a new one added, the rest
@@ -24,7 +39,7 @@
   a material list kept on this computer, and the parts of a product to cut,
   with quantities multiplied down the tree and checked against the list
   (unknown material, missing size, part larger than the sheet or bar)
-- The cut planners (`linear`, `rect`, `giben`) and the `cuttest` screen moved
+- The cut planners (`linear`, `rect`, `giben`) and the cut test screen moved
   to their own Go module in `cutplan/`, which depends only on the standard
   library. `pkg/cutplan` is now just the adapter that registers them in
   `extension`

@@ -21,10 +21,10 @@ res, err := rect.Run(ctx, job, func(better rect.Result) { /* progress */ })
 problems := rect.Verify(job, res)
 ```
 
-Try it with real cases in the browser:
+Try it with real cases in EngTree Corte, from the root of the repository:
 
 ```
-go run ./cmd/cuttest
+go run ./cmd/engtreecorte
 ```
 
 Tests: `go test ./...` from this folder.

@@ -16,11 +16,14 @@ ui/index.html                                   Go server
 
 ```
 cmd/engtree/      the Windows executable (and the icon resource)
+cmd/engtreecorte/ EngTree Corte: the cut planner on its own, for the shop floor
 app/              the program itself: app.Run(), the server, the UI
 extension/        where cut planners plug in
 pkg/geom/         points, rings, a ring with its holes (mm)
 pkg/dxfgeom/      DXF -> segments and closed contours
 pkg/cutplan/      plugs the planners of ./cutplan into extension
+pkg/cutreport/    the cut plan PDF report
+pkg/window/       the app window and stopping when it closes
 cutplan/          its own Go module: the cut planners (see below)
 tools/makeicon/   builds the .syso icon resource
 ```
@@ -38,6 +41,8 @@ modules can import them.
 | File | Role |
 |---|---|
 | `cmd/engtree/main.go` | calls `app.Run()`; holds `rsrc_windows_amd64.syso` |
+| `cmd/engtreecorte/` | EngTree Corte (`EngTreeCorte.exe`): `page.html` (the screen: plan data, parts with description and project, stock, settings, drawings numbered as in the report, dark or light), `server.go` (runs the planners), `export.go` (`/api/pdf`, and `/api/production`: the PDF and the Giben .AC/.AD in one ZIP, after the verifier) |
+| `pkg/window/window.go` | Opens the page in Edge or Chrome app mode; stops the program when the window closes or after 3 minutes without requests |
 | `app/main.go` | Product list, routes, folder reachability, path safety, window launch, auto exit |
 | `app/config.go` | Settings (`engtree.json`), defaults, portable mode, shared settings file, modes |
 | `app/sheets.go` | Reads .csv/.txt (delimiter and encoding detection) and dispatches .xlsx |
@@ -79,10 +84,9 @@ Its tests run from inside the folder (`cd cutplan && go test ./...`).
 | `cutplan/linear/` | Bars and tubes: `types.go` (job, result), `verify.go` (the independent verifier), `plan.go` (the planner) |
 | `cutplan/rect/` | Sheets on a panel saw, edge-to-edge cuts in 2 or 3 stages: same three files |
 | `cutplan/giben/` | A rectangular plan as the .AC and .AD files of a Giben saw (GVision); format in `cutplan/GIBEN.md` |
-| `cutplan/cmd/cuttest/` | Local test page: type parts and stock, calculate, see the bars or sheets drawn and the cut list |
 
 Each planner has a verifier written before it and sharing no code with it.
-Every plan made in the tests, and every plan shown by `cmd/cuttest`, goes
+Every plan made in the tests, and every plan shown or exported by EngTree Corte, goes
 through the verifier.
 
 ## Matching files to codes

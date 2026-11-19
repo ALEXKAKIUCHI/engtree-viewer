@@ -75,8 +75,8 @@ func TestFooterPathFits(t *testing.T) {
 }
 
 func TestFileName(t *testing.T) {
-	n := FileName(Header{Product: "P/1", ProductDesc: `MESA "A"`, Created: time.Date(2026, 11, 19, 8, 5, 0, 0, time.UTC)})
-	if n != "Plano de corte - P_1 - MESA _A_ - 2026-11-19 0805" || strings.ContainsAny(n, `/"`) {
+	n := FileName(Header{Product: "P/1", ProductDesc: `MESA "A" DE CANTO ÇÃO`, Created: time.Date(2026, 11, 19, 8, 5, 0, 0, time.UTC)})
+	if n != "Plano de corte - P_1 - MESA _A_ DE CANTO CAO - 2026-11-19 0805" || strings.ContainsAny(n, `/"`) {
 		t.Errorf("file name: %q", n)
 	}
 }

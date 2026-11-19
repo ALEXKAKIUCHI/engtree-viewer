@@ -86,6 +86,15 @@ Object.assign(I18N['pt-BR'], {
   mi_repeated_code: 'código usado por dois materiais ({0})'
 });
 
+// fileNameOf reads the file name from a Content-Disposition header, in the
+// UTF-8 form (filename*=utf-8''...) or the plain one.
+function fileNameOf(r, fallback) {
+  const h = r.headers.get('Content-Disposition') || '';
+  const star = h.match(/filename\*=utf-8''([^;]+)/i);
+  if (star) try { return decodeURIComponent(star[1]); } catch (e) {}
+  return h.match(/filename="?([^";]+)"?/)?.[1] || fallback;
+}
+
 const cut = { ready: false, lines: [], mats: { materials: [] }, machine: null, status: null, poll: null, product: '', productDesc: '' };
 
 function num(v) { const n = parseFloat(String(v ?? '').replace(',', '.')); return isFinite(n) ? n : 0; }
@@ -339,9 +348,8 @@ async function cutXLSX() {
   if (!r.ok) { toast(await r.text()); return; }
   const err = r.headers.get('X-Save-Error');
   if (err) toast(t('cut_save_error', err));
-  const name = (r.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/);
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(await r.blob()); a.download = name ? name[1] : 'resumo.xlsx'; a.click();
+  a.href = URL.createObjectURL(await r.blob()); a.download = fileNameOf(r, 'resumo.xlsx'); a.click();
 }
 
 // ---------- results ----------
@@ -477,9 +485,8 @@ async function matImport(input) {
 async function matExport(format, template) {
   const r = await fetch(`/api/materials/export?format=${format}${template ? '&template=1' : ''}`);
   if (!r.ok) { toast(await r.text()); return; }
-  const name = (r.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/);
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(await r.blob()); a.download = name ? name[1] : 'materiais.' + format; a.click();
+  a.href = URL.createObjectURL(await r.blob()); a.download = fileNameOf(r, 'materiais.' + format); a.click();
 }
 
 function matAddRow(m, focus) {
