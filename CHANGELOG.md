@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Material list import and export: .xlsx or .csv (semicolons and decimal
+  commas, as Excel in Portuguese writes them), and a blank template. An
+  import merges by code (a known code is updated, a new one added, the rest
+  kept), recognises the usual header names in any order, and lists the rows
+  it left out with the reason. Nothing is saved until Save is clicked
 - New Cut plan tab: product and quantity, a conference table where sizes,
   quantities, rotation and edge banding can be corrected for this plan only,
   the material list editor, machine values remembered on this computer, one

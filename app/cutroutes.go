@@ -2,6 +2,7 @@ package app
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -13,6 +14,8 @@ import (
 //
 //	GET  /api/materials           the material list
 //	POST /api/materials           replace it (refused with 400 and the reasons when invalid)
+//	GET  /api/materials/export?format=xlsx|csv[&template=1]  the list as a spreadsheet (template: header only)
+//	POST /api/materials/import?name=file.xlsx  read a spreadsheet (raw body) and merge it; NOT saved
 //	GET  /api/cut_lines?code=&qty= the parts of a product to cut, with total quantities
 //	GET  /api/cut_machine          the machine values typed last time
 //	POST /api/cut_plan             start a plan (PlanRequest); a new one stops the old
@@ -103,6 +106,47 @@ func cutRoutes(mux *http.ServeMux) {
 			}
 		}
 		writeJSON(w, loadMaterials())
+	})
+
+	mux.HandleFunc("/api/materials/export", func(w http.ResponseWriter, r *http.Request) {
+		l := loadMaterials()
+		name := "Cadastro de materiais"
+		if r.URL.Query().Get("template") == "1" {
+			l, name = MaterialList{}, "Modelo de cadastro de materiais"
+		}
+		rows := materialRows(l)
+		if r.URL.Query().Get("format") == "csv" {
+			w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+			w.Header().Set("Content-Disposition", `attachment; filename="`+name+`.csv"`)
+			_, _ = w.Write(materialsCSV(rows))
+			return
+		}
+		b, err := writeXLSX("Materiais", rows)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+		w.Header().Set("Content-Disposition", `attachment; filename="`+name+`.xlsx"`)
+		_, _ = w.Write(b)
+	})
+
+	mux.HandleFunc("/api/materials/import", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "POST the file", http.StatusMethodNotAllowed)
+			return
+		}
+		data, err := io.ReadAll(io.LimitReader(r.Body, 20<<20))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		res, err := importMaterials(r.URL.Query().Get("name"), data, loadMaterials())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, res)
 	})
 
 	mux.HandleFunc("/api/cut_lines", func(w http.ResponseWriter, r *http.Request) {
