@@ -34,7 +34,15 @@ Object.assign(I18N.en, {
   m_title: 'Material list', m_hint: 'One list for every project, kept on this computer. The code must be the one in the BOM material column.',
   m_code: 'Code', m_alt: 'Alt. code', m_desc: 'Description', m_kind: 'Type', m_thick: 'Thick.', m_grain: 'Grain',
   m_len: 'Length', m_wid: 'Width', m_min: 'Min. offcut L×W', m_offcuts: 'Offcuts in stock', m_offcuts_ph: '1000x800x2; 600x500',
-  m_default_min: 'Smallest useful offcut (general)', m_add: '+ Material', m_save: 'Save', m_saved: 'Material list saved'
+  m_default_min: 'Smallest useful offcut (general)', m_add: '+ Material', m_save: 'Save', m_saved: 'Material list saved',
+  m_import: 'Import spreadsheet…', m_export_xlsx: 'Export .xlsx', m_export_csv: 'Export .csv', m_template: 'Blank template',
+  m_io_hint: 'Export takes the saved list. An import fills this screen; check it and click Save.',
+  m_imported: '{0} new, {1} updated. Check and click Save.', m_import_missing: 'Columns not found: {0}. The sheet needs at least Code and Length.',
+  m_import_rows: 'Left out:', m_row: 'row {0}',
+  mi_no_code: 'no code', mi_bad_type: 'type "{0}" is neither sheet nor bar', mi_bad_grain: 'grain "{0}" is neither yes nor no',
+  mi_not_number: '"{0}" is not a number', mi_bad_offcut: 'offcuts "{0}" are not written as length x width x quantity',
+  mi_no_size: 'size missing (sheet: length and width; bar: length)', mi_negative_thickness: 'negative thickness',
+  mi_repeated_code: 'code used by two materials ({0})'
 });
 Object.assign(I18N['pt-BR'], {
   cut_tab: 'Plano de corte',
@@ -67,7 +75,15 @@ Object.assign(I18N['pt-BR'], {
   m_title: 'Cadastro de materiais', m_hint: 'Um cadastro para todos os projetos, guardado neste computador. O código tem que ser o mesmo da coluna de material da BOM.',
   m_code: 'Código', m_alt: 'Cód. alternativo', m_desc: 'Descrição', m_kind: 'Tipo', m_thick: 'Esp.', m_grain: 'Veio',
   m_len: 'Comp.', m_wid: 'Larg.', m_min: 'Sobra mín. C×L', m_offcuts: 'Retalhos em estoque', m_offcuts_ph: '1000x800x2; 600x500',
-  m_default_min: 'Menor sobra aproveitável (geral)', m_add: '+ Material', m_save: 'Gravar', m_saved: 'Cadastro gravado'
+  m_default_min: 'Menor sobra aproveitável (geral)', m_add: '+ Material', m_save: 'Gravar', m_saved: 'Cadastro gravado',
+  m_import: 'Importar planilha…', m_export_xlsx: 'Exportar .xlsx', m_export_csv: 'Exportar .csv', m_template: 'Modelo em branco',
+  m_io_hint: 'A exportação leva o cadastro gravado. A importação preenche esta tela; confira e clique em Gravar.',
+  m_imported: '{0} novos, {1} atualizados. Confira e clique em Gravar.', m_import_missing: 'Colunas não encontradas: {0}. A planilha precisa ter pelo menos Código e Comprimento.',
+  m_import_rows: 'Ficaram de fora:', m_row: 'linha {0}',
+  mi_no_code: 'sem código', mi_bad_type: 'tipo "{0}" não é chapa nem barra', mi_bad_grain: 'veio "{0}" não é sim nem não',
+  mi_not_number: '"{0}" não é um número', mi_bad_offcut: 'retalhos "{0}" não estão como comprimento x largura x quantidade',
+  mi_no_size: 'falta medida (chapa: comprimento e largura; barra: comprimento)', mi_negative_thickness: 'espessura negativa',
+  mi_repeated_code: 'código usado por dois materiais ({0})'
 });
 
 const cut = { ready: false, lines: [], mats: { materials: [] }, machine: null, status: null, poll: null, product: '', productDesc: '' };
@@ -147,6 +163,14 @@ async function cutOpen() {
       <th data-i18n="m_thick"></th><th data-i18n="m_grain"></th><th data-i18n="m_len"></th><th data-i18n="m_wid"></th>
       <th data-i18n="m_min"></th><th data-i18n="m_offcuts"></th><th></th></tr></thead><tbody id="m-body"></tbody></table></div>
     <div id="m-error"></div>
+    <div class="row" style="margin-top: 10px; flex-wrap: wrap">
+      <button onclick="document.getElementById('m-file').click()" data-i18n="m_import"></button>
+      <input type="file" id="m-file" accept=".xlsx,.csv,.txt" style="display: none" onchange="matImport(this)">
+      <button onclick="matExport('xlsx')" data-i18n="m_export_xlsx"></button>
+      <button onclick="matExport('csv')" data-i18n="m_export_csv"></button>
+      <button onclick="matExport('xlsx', true)" data-i18n="m_template"></button>
+      <span class="muted" data-i18n="m_io_hint"></span>
+    </div>
     <div class="modal-actions"><button onclick="matAddRow()" data-i18n="m_add"></button><span class="grow"></span>
       <button onclick="closeModal('mat-modal')" data-i18n="close"></button>
       <button class="primary" onclick="matSave()" data-i18n="m_save"></button></div>
@@ -432,6 +456,32 @@ function matOpen(newCode) {
   if (newCode) matAddRow({ code: newCode, kind: 'sheet' }, true);
   showModal('mat-modal');
 }
+// matImport reads a spreadsheet on the server and shows the merged list
+// here, unsaved: the person checks it and clicks Save.
+async function matImport(input) {
+  const f = input.files[0];
+  input.value = '';
+  if (!f) return;
+  const r = await fetch('/api/materials/import?name=' + encodeURIComponent(f.name), { method: 'POST', body: f });
+  const box = document.getElementById('m-error');
+  if (!r.ok) { box.innerHTML = `<div class="warnbox">${esc(await r.text())}</div>`; return; }
+  const d = await r.json();
+  if (d.missing.length) { box.innerHTML = `<div class="warnbox">${esc(t('m_import_missing', d.missing.join(', ')))}</div>`; return; }
+  document.getElementById('m-body').innerHTML = '';
+  d.list.materials.forEach(m => matAddRow(m));
+  let html = `<div class="warnbox" style="background:#0f2e22;border-color:#059669;color:#a7f3d0">${esc(t('m_imported', d.added, d.updated))}</div>`;
+  const why = pr => (pr.row ? t('m_row', pr.row) + (pr.code ? ` (${pr.code})` : '') + ': ' : pr.code + ': ') + t('mi_' + pr.reason, pr.value || '');
+  if (d.problems.length) html += `<div class="warnbox"><b>${esc(t('m_import_rows'))}</b><br>${d.problems.map(pr => esc(why(pr))).join('<br>')}</div>`;
+  box.innerHTML = html;
+}
+async function matExport(format, template) {
+  const r = await fetch(`/api/materials/export?format=${format}${template ? '&template=1' : ''}`);
+  if (!r.ok) { toast(await r.text()); return; }
+  const name = (r.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/);
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(await r.blob()); a.download = name ? name[1] : 'materiais.' + format; a.click();
+}
+
 function matAddRow(m, focus) {
   m = m || { kind: 'sheet' };
   const offcuts = (m.offcuts || []).map(o => (m.kind === 'bar' ? `${o.length}` : `${o.length}x${o.width}`) + (o.quantity > 1 ? `x${o.quantity}` : '')).join('; ');
