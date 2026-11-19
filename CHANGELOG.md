@@ -24,8 +24,8 @@
   library. `pkg/cutplan` is now just the adapter that registers them in
   `extension`
 - New `pkg/cutplan/giben`: a rectangular plan as the .AC and .AD files a
-  Giben panel saw (GVision) loads, in the layout Corte Certo exports. Tested
-  by rebuilding two Corte Certo exports byte for byte. The cut test screen
+  Giben panel saw (GVision) loads. Tested by rebuilding two real exports
+  byte for byte. The cut test screen
   downloads them
 - The program is now a package (`app`) started by `cmd/engtree`, so another
   build can add features through the new `extension` package. The free build

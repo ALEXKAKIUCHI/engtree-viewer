@@ -13,7 +13,7 @@ import (
 	"github.com/ALEXKAKIUCHI/engtree-viewer/cutplan/rect"
 )
 
-// The files in testdata were exported by Corte Certo for a Giben saw; only
+// The files in testdata are real exports for a Giben saw; only
 // the product codes and the description were changed (same lengths).
 //
 // The tests read them back into sheets, parts and cuts, as the planner
@@ -208,7 +208,7 @@ func readSample(t *testing.T, name string, kerf, trim float64) (sample, []byte, 
 
 func near(a, b float64) bool { return a-b < tol && b-a < tol }
 
-func TestCorteCertoFiles(t *testing.T) {
+func TestReferenceFiles(t *testing.T) {
 	for _, name := range []string{"mdf15", "mdf6"} {
 		for _, set := range [][2]float64{{4, 0}, {4.4, 10}} {
 			t.Run(fmt.Sprintf("%s kerf %g trim %g", name, set[0], set[1]), func(t *testing.T) {

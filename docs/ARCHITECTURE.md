@@ -76,7 +76,7 @@ Its tests run from inside the folder (`cd cutplan && go test ./...`).
 | `cutplan/cutplan.go` | Lists the planners (`Planners`, `ByID`); jobs, results and verification travel as JSON |
 | `cutplan/linear/` | Bars and tubes: `types.go` (job, result), `verify.go` (the independent verifier), `plan.go` (the planner) |
 | `cutplan/rect/` | Sheets on a panel saw, edge-to-edge cuts in 2 or 3 stages: same three files |
-| `cutplan/giben/` | A rectangular plan as the .AC and .AD files of a Giben saw (GVision), as Corte Certo writes them; format in `cutplan/GIBEN.md` |
+| `cutplan/giben/` | A rectangular plan as the .AC and .AD files of a Giben saw (GVision); format in `cutplan/GIBEN.md` |
 | `cutplan/cmd/cuttest/` | Local test page: type parts and stock, calculate, see the bars or sheets drawn and the cut list |
 
 Each planner has a verifier written before it and sharing no code with it.

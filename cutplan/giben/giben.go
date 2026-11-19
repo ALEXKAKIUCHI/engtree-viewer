@@ -1,5 +1,5 @@
 // Package giben writes a rectangular cut plan as the two files a Giben
-// panel saw (GVision) loads, in the layout Corte Certo exports for it:
+// panel saw (GVision) loads:
 //
 //   - .AC, the cuts: for each sheet layout, the tree of edge-to-edge cuts,
 //     one line per cut, stage by stage;
@@ -9,7 +9,7 @@
 // Both files are plain text in fixed columns, Windows line ends, Latin-1.
 // Give them the same name: only the extension changes.
 //
-// The layout was worked out from files exported by Corte Certo. A few
+// The layout was worked out from real files the saw loads. A few
 // columns never changed in those files and their meaning is not known;
 // they are written with the same values (see the constants below).
 package giben
@@ -26,7 +26,7 @@ import (
 	"github.com/ALEXKAKIUCHI/engtree-viewer/cutplan/rect"
 )
 
-// Columns that were the same in every file Corte Certo wrote. Their
+// Columns that were the same in every reference file. Their
 // meaning is not known, so they are copied as they are.
 const (
 	sheetFlag   = "0"      // .AC sheet line, last column
@@ -166,7 +166,7 @@ type box struct {
 
 // sheetPlan reads the tree of cuts out of a sheet layout.
 //
-// Corte Certo numbers the levels by direction: level 2 cuts are measured
+// The files number the levels by direction: level 2 cuts are measured
 // across the sheet width, level 3 along its length, and so on. A sheet
 // whose first cuts are along the width starts at level 3.
 //

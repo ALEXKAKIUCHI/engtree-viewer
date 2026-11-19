@@ -1,8 +1,8 @@
 # Giben panel saw files (.AC / .AD)
 
 `giben` writes a rectangular plan as the two files a Giben saw
-running GVision loads, in the layout Corte Certo exports for it. The layout
-below was worked out from Corte Certo files; `giben/testdata`
+running GVision loads. The layout below was worked out from real files the
+saw loads; `giben/testdata`
 holds two of them (product codes changed) and the tests rebuild them byte
 for byte.
 
@@ -69,8 +69,8 @@ and are written as they are; their meaning is not known.
 
 ## Before the first real cut
 
-1. Compare: export a job Corte Certo has also exported and compare the
-   files.
+1. Compare: export a job that already has files made by the program in use
+   today and compare them.
 2. Open the files in GVision without cutting and check them against the
    drawing.
 3. Cut a scrap sheet first, with the operator watching.
